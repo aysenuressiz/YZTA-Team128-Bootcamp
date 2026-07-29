@@ -19,12 +19,12 @@ let activeChatId = generateUUID();
 // Bunun için login.html'de giriş yapan kullanıcının GERÇEK user_id'sini kullanıyoruz,
 // böylece farklı hesaplarla girişte check-in durumu birbirine karışmaz.
 // Giriş yapan kullanıcının gerçek adı (login.html'de kaydedilir).
-// Login akışı hiç kullanılmadan test amaçlı doğrudan index.html açıldıysa varsayılan bir isim gösterilir.
+// Login akışı hiç kullanılmadan test amaçlı doğrudan app.html açıldıysa varsayılan bir isim gösterilir.
 let userDisplayName = localStorage.getItem('user_name') || 'Ahmet Amca';
 
 let elderProfileId = localStorage.getItem('user_id');
 if (!elderProfileId) {
-    // Login akışı hiç kullanılmadan (test amaçlı) doğrudan index.html açıldıysa
+    // Login akışı hiç kullanılmadan (test amaçlı) doğrudan app.html açıldıysa
     // yine de check-in özelliği çalışsın diye geçici bir kimlik üretip saklıyoruz.
     elderProfileId = localStorage.getItem('elder_profile_id_fallback');
     if (!elderProfileId) {
@@ -45,7 +45,6 @@ const chatScroll = document.getElementById('chatScroll');
 const userInput = document.getElementById('userInput');
 const historySidebar = document.getElementById('historySidebar');
 const historyTodayList = document.getElementById('history-today');
-const sidebarBackdrop = document.getElementById('sidebarBackdrop');
 const historyReopenBtn = document.getElementById('historyReopenBtn');
 
 function getOwnerElderId() {
@@ -107,14 +106,12 @@ function openHistorySidebar() {
     if (!historySidebar) return;
     historySidebar.classList.remove('is-collapsed');
     historySidebar.style.display = 'flex';
-    if (sidebarBackdrop) sidebarBackdrop.classList.add('is-visible');
     syncHistoryReopenBtn();
 }
 
 function closeHistorySidebar() {
     if (!historySidebar) return;
     historySidebar.classList.add('is-collapsed');
-    if (sidebarBackdrop) sidebarBackdrop.classList.remove('is-visible');
     syncHistoryReopenBtn();
 }
 
@@ -206,8 +203,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Sayfa her açıldığında ekran dünkü sohbetle dolmayacak, bugünün temiz oturumuyla başlayacak.
     chatBox.innerHTML = `
         <div class="chat-msg msg-ai">
-            Merhaba ${userDisplayName}! Sesini duymak çok güzel, bugün nasılsın? 
-            Konuşmak için aşağıdaki düğmeye basabilirsin.
+            Merhaba ${userDisplayName}! Ben Yanımda Al. Bugün nasılsın?
+            Yazabilir veya aşağıdaki butonla konuşabilirsin.
         </div>
     `;
     
@@ -220,7 +217,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         checkinGreetingEl.textContent = `${userDisplayName}, bugün kendini nasıl hissediyorsun?`;
     }
 
-    // İlaç listesini API'den yükle (kiosk modu — tanımlama aile panelinde)
+    // İlaç listesini API'den yükle
     if (typeof MedicationDefinitions !== 'undefined') {
         await MedicationDefinitions.init({
             mode: 'kiosk',
@@ -300,9 +297,11 @@ function dismissCheckinReminder() {
 
 function switchPage(pageId) {
     document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
-    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-    document.getElementById(`page-${pageId}`).classList.add('active');
-    document.getElementById(`nav-${pageId}`).classList.add('active');
+    document.querySelectorAll('.nav-btn, .app-tab').forEach(btn => btn.classList.remove('active'));
+    const pageEl = document.getElementById(`page-${pageId}`);
+    if (pageEl) pageEl.classList.add('active');
+    const navEl = document.getElementById(`nav-${pageId}`);
+    if (navEl) navEl.classList.add('active');
     
     if (pageId === 'sohbet') {
         if (historySidebar) {
@@ -313,7 +312,6 @@ function switchPage(pageId) {
         syncHistoryReopenBtn();
     } else {
         if (historySidebar) historySidebar.style.display = 'none';
-        if (sidebarBackdrop) sidebarBackdrop.classList.remove('is-visible');
         if (historyReopenBtn) {
             historyReopenBtn.classList.remove('is-visible');
             historyReopenBtn.classList.add('is-hidden');
@@ -329,6 +327,35 @@ function switchPage(pageId) {
         MedicationDefinitions.refresh();
     }
 }
+
+window.switchPage = switchPage;
+window.appendMessageToUI = appendMessageToUI;
+window.toggleVoice = toggleVoice;
+window.completeCheckin = completeCheckin;
+window.checkinFollowUpMessage = checkinFollowUpMessage;
+window.showMedicationAlert = showMedicationAlert;
+window.logMedication = logMedication;
+window.dismissMedicationAlert = dismissMedicationAlert;
+window.getOwnerElderId = getOwnerElderId;
+window.loadConversationsFromSupabase = loadConversationsFromSupabase;
+window.loadCheckinHistory = loadCheckinHistory;
+window.loadCheckinStatus = loadCheckinStatus;
+window.goToCheckinFromReminder = typeof goToCheckinFromReminder === 'function' ? goToCheckinFromReminder : undefined;
+window.dismissCheckinReminder = dismissCheckinReminder;
+window.openMedicationCamera = openMedicationCamera;
+
+// enhance.js için canlı state
+Object.defineProperty(window, 'activeChatId', { get: () => activeChatId, set: (v) => { activeChatId = v; } });
+Object.defineProperty(window, 'userDisplayName', { get: () => userDisplayName, set: (v) => { userDisplayName = v; } });
+Object.defineProperty(window, 'elderProfileId', { get: () => elderProfileId, set: (v) => { elderProfileId = v; } });
+Object.defineProperty(window, 'realUserId', { get: () => realUserId });
+Object.defineProperty(window, 'isRecording', { get: () => isRecording, set: (v) => { isRecording = v; } });
+Object.defineProperty(window, 'mediaRecorder', { get: () => mediaRecorder, set: (v) => { mediaRecorder = v; } });
+Object.defineProperty(window, 'audioChunks', { get: () => audioChunks, set: (v) => { audioChunks = v; } });
+Object.defineProperty(window, 'stream', { get: () => stream, set: (v) => { stream = v; } });
+Object.defineProperty(window, 'currentMedAlert', { get: () => currentMedAlert, set: (v) => { currentMedAlert = v; } });
+Object.defineProperty(window, 'snoozeTimer', { get: () => snoozeTimer, set: (v) => { snoozeTimer = v; } });
+window.API_BASE_URL = API_BASE_URL;
 
 // Check-in eksikliği tespiti: bugün check-in yapılmış mı, banner ile göster
 async function loadCheckinStatus() {
@@ -359,16 +386,93 @@ async function loadCheckinStatus() {
 }
 
 // Günlük check-in geçmişini çekme
+let checkinHistoryCache = [];
+let checkinChartRange = "week";
+
+function moodScore(mood) {
+    const value = String(mood || "").toLocaleLowerCase("tr-TR");
+    if (value.includes("harika") || value.includes("çok iyi") || value.includes("iyi")) return 3;
+    if (value.includes("halsiz") || value.includes("yorgun") || value.includes("kötü")) return 1;
+    return 2;
+}
+
+function setCheckinChartRange(range) {
+    checkinChartRange = range;
+    document.querySelectorAll(".checkin-chart-tab").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.range === range);
+    });
+    renderCheckinChart(checkinHistoryCache, range);
+}
+window.setCheckinChartRange = setCheckinChartRange;
+
+function renderCheckinChart(history, range) {
+    const chart = document.getElementById("checkinChart");
+    if (!chart) return;
+    const now = new Date();
+    let buckets = [];
+
+    if (range === "day") {
+        buckets = Array.from({ length: 6 }, (_, i) => {
+            const start = i * 4;
+            return {
+                label: `${String(start).padStart(2, "0")}-${String(start + 4).padStart(2, "0")}`,
+                items: history.filter((item) => {
+                    const d = new Date(item.created_at);
+                    return d.toDateString() === now.toDateString() && d.getHours() >= start && d.getHours() < start + 4;
+                }),
+            };
+        });
+    } else if (range === "month") {
+        buckets = Array.from({ length: 4 }, (_, i) => {
+            const start = new Date(now);
+            start.setDate(now.getDate() - (3 - i) * 7);
+            const end = new Date(start);
+            end.setDate(start.getDate() + 7);
+            return {
+                label: `${i + 1}. hf`,
+                items: history.filter((item) => {
+                    const d = new Date(item.created_at);
+                    return d >= start && d < end;
+                }),
+            };
+        });
+    } else {
+        buckets = Array.from({ length: 7 }, (_, i) => {
+            const day = new Date(now);
+            day.setDate(now.getDate() - (6 - i));
+            return {
+                label: day.toLocaleDateString("tr-TR", { weekday: "short" }),
+                items: history.filter((item) => new Date(item.created_at).toDateString() === day.toDateString()),
+            };
+        });
+    }
+
+    chart.innerHTML = buckets
+        .map((bucket) => {
+            const scores = bucket.items.map((item) => moodScore(item.mood));
+            const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+            const height = scores.length ? Math.max(12, Math.round((avg / 3) * 140)) : 8;
+            const cls = !scores.length ? "is-empty" : avg >= 2.5 ? "" : avg >= 1.5 ? "is-low" : "is-bad";
+            return `
+                <div class="checkin-bar" title="${bucket.items.length} kayıt">
+                    <div class="checkin-bar-fill ${cls}" style="height:${height}px"></div>
+                    <label>${bucket.label}</label>
+                </div>`;
+        })
+        .join("");
+}
+
 async function loadCheckinHistory() {
     const historyBox = document.getElementById('checkinHistory');
     try {
-        // Geçmişi çekerken hangi sohbet oturumuna bağlı olduğunu query parametresi olarak gönderiyoruz
         const response = await fetch(`${API_BASE_URL}/checkin/history?conversation_id=${elderProfileId}`);
         const data = await response.json();
         const history = data.history || [];
+        checkinHistoryCache = history;
 
         if (history.length === 0) {
-            historyBox.innerHTML = `<p style="color: var(--text-muted); font-size: 16px;">Henüz bu oturuma ait durum kaydı yok.</p>`;
+            historyBox.innerHTML = `<p class="muted">Henüz bu oturuma ait durum kaydı yok.</p>`;
+            renderCheckinChart([], checkinChartRange);
             return;
         }
 
@@ -377,14 +481,13 @@ async function loadCheckinHistory() {
             const dateStr = date.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
             const timeStr = date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
             return `
-                <div class="routine-item">
-                    <div>
-                        <strong style="display:block; font-size:18px;">${item.mood}</strong>
-                        <span style="font-size: 14px; color: var(--text-muted);">${dateStr} • ${timeStr}</span>
-                    </div>
+                <div class="checkin-history-item">
+                    <strong>${item.mood}</strong>
+                    <span>${dateStr} • ${timeStr}</span>
                 </div>
             `;
         }).join('');
+        renderCheckinChart(history, checkinChartRange);
     } catch (error) {
         console.error(error);
         historyBox.innerHTML = `<p style="color: var(--warning-color); font-size: 16px;">Kayıtlar yüklenemedi.</p>`;
@@ -580,13 +683,32 @@ function checkinFollowUpMessage(mood) {
         .toLocaleLowerCase("tr-TR")
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "");
+
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
     if (value.includes("halsiz") || value.includes("kotu") || value.includes("yorgun") || value.includes("kötü")) {
-        return "Durumunu ailenle paylaştık. Kendine iyi bak; istersen biraz sohbet edelim.";
+        return pick([
+            "Durumunu ailenle paylaştık. Kendine iyi bak; istersen biraz sohbet edelim.",
+            "Teşekkürler, haber verdin. Biraz dinlenmek iyi gelebilir. İstersen yanındayım.",
+            "Not aldık ve ailen bilgilendirildi. Su içmeyi ve hafif bir mola vermeyi unutma.",
+            "Anladım, bugün biraz yorgun hissediyorsun. İstersen birlikte konuşarak rahatlarız.",
+            "Kaydettim. Ailen de haberiniz olsun diye bilgilendirildi. Kendine nazik davran.",
+        ]);
     }
     if (value.includes("harika") || value === "iyi" || value.includes("cok iyi") || value.includes("çok iyi")) {
-        return "Ne güzel! Ailen de iyi olduğunu bilmekten mutlu olacak.";
+        return pick([
+            "Ne güzel! Ailen de iyi olduğunu bilmekten mutlu olacak.",
+            "Harika haber. Keyfin yerindeyse günün daha da güzel geçer.",
+            "Sevindim! Keyfin yerinde olması güzel haber. Ailene de ilettik.",
+            "Süper. Enerjin yerinde görünüyor; böyle devam.",
+            "Güzel! Bugün iyi olman herkese moral olur. Ailen de bilgilendirildi.",
+        ]);
     }
-    return "Durumun kaydedildi. Ailen bilgilendirildi.";
+    return pick([
+        "Durumun kaydedildi. Ailen bilgilendirildi.",
+        "Teşekkürler, kaydınız alındı.",
+        "Bildiriminiz kaydedildi. İyi günler.",
+    ]);
 }
 
 // Sağlık kontrolü durum bildirimi (Dinamik Oturum Bağlantılı)

@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Yanımda Al — Refakatçi</title>
+    <script>
+        (function () {
+            var userId = localStorage.getItem("user_id");
+            var role = localStorage.getItem("user_role");
+            if (!userId) {
+                window.location.replace("onboarding.html");
+                return;
+            }
+            if (role === "family") {
+                window.location.replace("family-dashboard.html");
+                return;
+            }
+            document.documentElement.classList.add("session-ok");
+        })();
+    </script>
+    <style>html:not(.session-ok) body { visibility: hidden; }</style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="app-kiosk.css?v=20260728p5">
+    <link rel="stylesheet" href="definitions.css?v=20260728p5">
+    <link rel="stylesheet" href="recognition.css?v=20260728p5">
+</head>
+<body class="kiosk-app">
+    <div class="ambient" aria-hidden="true">
+        <span class="orb orb-a"></span>
+        <span class="orb orb-b"></span>
+    </div>
+
+    <div class="app-shell">
+        <header class="app-top">
+            <div class="app-brand">
+                <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                    <circle cx="32" cy="6" r="3" fill="#2563eb"/>
+                    <path d="M32 9 V16" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round"/>
+                    <rect x="14" y="16" width="36" height="28" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="2.2"/>
+                    <rect x="40" y="20" width="7" height="7" rx="1.5" fill="#0f766e"/>
+                    <path d="M43.5 21.5 V25.5 M41.5 23.5 H45.5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>
+                    <circle cx="24" cy="29" r="3.2" fill="#1d4ed8"/>
+                    <circle cx="40" cy="29" r="3.2" fill="#1d4ed8"/>
+                    <path d="M25 35c2.2 2.4 11.8 2.4 14 0" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <div class="app-brand-text">
+                    <strong>Yanımda Al</strong>
+                    <span id="appUserLabel" class="app-greeting">Hoş geldiniz</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="app-body">
+            <div class="side-nav-rail is-collapsed" id="sideNavRail">
+                <nav class="app-side-nav is-collapsed" id="appSideNav" aria-label="Ana menü">
+                    <div class="side-nav-head">
+                        <button type="button" class="side-nav-toggle" id="navToggleBtn" onclick="toggleSideNav()" title="Menüyü genişlet" aria-label="Menüyü daralt/genişlet" aria-controls="appSideNav" aria-expanded="false">☰</button>
+                        <strong class="side-nav-title">Menü</strong>
+                    </div>
+                    <div class="side-nav-tabs">
+                        <button type="button" class="app-tab active" id="nav-sohbet" onclick="switchPage('sohbet')"><span>💬</span><em>Sohbet</em></button>
+                        <button type="button" class="app-tab" id="nav-ilaclar" onclick="switchPage('ilaclar')"><span>💊</span><em>İlaçlarım</em></button>
+                        <button type="button" class="app-tab" id="nav-durum" onclick="switchPage('durum')"><span>☀️</span><em>Durumum</em></button>
+                        <button type="button" class="app-tab" id="nav-profil" onclick="switchPage('profil')"><span>👤</span><em>Profil</em></button>
+                        <button type="button" class="app-tab app-tab-logout" id="nav-logout" onclick="logoutKiosk()" title="Çıkış">
+                            <span class="logout-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"/>
+                                    <path d="M14 12H22"/>
+                                    <path d="M18 8l4 4-4 4"/>
+                                </svg>
+                            </span>
+                            <em>Çıkış</em>
+                        </button>
+                    </div>
+                </nav>
+            </div>
+
+            <aside class="history-sidebar is-collapsed" id="historySidebar">
+                <div class="history-sidebar-inner">
+                    <div class="history-sidebar-head">
+                        <div class="history-section-title">Sohbetler</div>
+                    </div>
+                    <button type="button" class="history-new-chat" id="historyNewChatBtn">＋ Yeni sohbet</button>
+                    <div class="history-list" id="history-today"></div>
+                    <p id="historyEmptyHint" class="history-empty-hint" style="display:none;">Henüz sohbet yok.</p>
+                </div>
+            </aside>
+
+            <main class="main-content">
+                <!-- SOHBET -->
+                <section class="page active" id="page-sohbet">
+                    <h2 class="page-title">Refakatçi sohbeti</h2>
+                    <div class="chat-container" id="chatScroll">
+                        <div class="chat-box" id="chatBox">
+                            <div class="chat-msg msg-ai">Merhaba! Ben Yanımda Al. Bugün nasılsın? Yazabilir veya aşağıdaki butonla konuşabilirsin.</div>
+                        </div>
+                    </div>
+
+                    <div class="voice-panel">
+                        <div id="voiceBars" class="voice-bars" aria-hidden="true">
+                            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                        </div>
+                        <button type="button" class="btn btn-voice" id="voiceBtn" onclick="toggleVoice()">
+                            🎤 <span id="btnText">Konuşmak İçin Basın</span>
+                        </button>
+                        <p id="voiceHint" class="voice-hint">Başlatmak için basın, konuşun, bitince tekrar basın.</p>
+                    </div>
+
+                    <div class="text-input-container">
+                        <div class="chat-attach-group">
+                            <button type="button" class="btn btn-ghost chat-attach" id="chatAttachBtn" title="Fotoğraf ekle" aria-haspopup="menu" aria-expanded="false">📷</button>
+                            <div class="chat-attach-menu" id="chatAttachMenu" role="menu" hidden>
+                                <button type="button" class="chat-attach-option" role="menuitem" id="chatAttachGalleryBtn">🖼️ Galeriden seç</button>
+                                <button type="button" class="chat-attach-option" role="menuitem" id="chatAttachCameraBtn">📸 Kamera ile çek</button>
+                            </div>
+                            <input type="file" id="chatImageInput" accept="image/*" hidden>
+                            <input type="file" id="chatCameraInput" accept="image/*" capture="environment" hidden>
+                        </div>
+                        <input type="text" id="userInput" class="text-input" placeholder="Mesajınızı yazın..." onkeypress="handleKeyPress(event)">
+                        <button type="button" class="btn btn-send" onclick="sendComposer()">Gönder</button>
+                    </div>
+                    <div id="chatImagePreview" class="chat-image-preview" hidden></div>
+                </section>
+
+                <!-- İLAÇLAR -->
+                <section class="page" id="page-ilaclar">
+                    <h2 class="page-title">İlaçlarım</h2>
+                    <div class="med-subtabs" role="tablist">
+                        <button type="button" class="med-subtab active" id="medTabDaily" onclick="switchMedTab('daily')">Günlük ilaçlar</button>
+                        <button type="button" class="med-subtab" id="medTabAll" onclick="switchMedTab('all')">Tüm ilaçlar</button>
+                    </div>
+                    <div id="medicationToolbar"></div>
+                    <div id="medicationList" class="routine-list"></div>
+                    <div id="medicationListAll" class="routine-list" hidden></div>
+                </section>
+
+                <!-- DURUM -->
+                <section class="page" id="page-durum">
+                    <h2 class="page-title">Günlük sağlık kontrolü</h2>
+                    <div id="checkinStatusBanner" class="checkin-banner"></div>
+                    <div id="checkinCard" class="checkin-card">
+                        <p id="checkinGreeting" class="checkin-greeting">Bugün kendini nasıl hissediyorsun?</p>
+                        <button type="button" class="btn btn-success" onclick="completeCheckin('Harika!')">😊 Çok İyiyim</button>
+                        <button type="button" class="btn btn-warn" onclick="completeCheckin('Biraz halsizim')">😐 Biraz Halsizim</button>
+                    </div>
+                    <div class="checkin-dashboard">
+                        <div class="checkin-history-wrap">
+                            <h3>Geçmiş kayıtlar</h3>
+                            <div class="checkin-history-list" id="checkinHistory">
+                                <p class="muted">Kayıtlar yükleniyor...</p>
+                            </div>
+                        </div>
+                        <div class="checkin-chart-wrap">
+                            <div class="checkin-chart-tabs" role="tablist">
+                                <button type="button" class="checkin-chart-tab active" data-range="day" onclick="setCheckinChartRange('day')">Günlük</button>
+                                <button type="button" class="checkin-chart-tab" data-range="week" onclick="setCheckinChartRange('week')">Haftalık</button>
+                                <button type="button" class="checkin-chart-tab" data-range="month" onclick="setCheckinChartRange('month')">Aylık</button>
+                            </div>
+                            <div id="checkinChart" class="checkin-chart" aria-live="polite"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- PROFİL -->
+                <section class="page" id="page-profil">
+                    <div id="profileView" class="profile-view"></div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <!-- Profil düzenle (ilaç ekle gibi modal) -->
+    <div id="profileEditModal" class="med-add-modal">
+        <div class="med-add-modal-card profile-edit-modal-card">
+            <div class="profile-edit-head">
+                <h3>Profili düzenle</h3>
+                <button type="button" class="btn btn-ghost" style="width:auto;min-height:40px;" onclick="cancelProfileEdit()">✕</button>
+            </div>
+            <div class="profile-edit-grid">
+                <div class="profile-edit-col">
+                    <h3>Kişisel</h3>
+                    <label>📷 Profil fotoğrafı</label>
+                    <div class="profile-photo-edit">
+                        <img id="profilePhotoPreview" alt="" hidden>
+                        <label class="btn btn-ghost" style="width:auto;min-height:44px;">
+                            Fotoğraf seç
+                            <input type="file" id="profilePhotoInput" accept="image/*" hidden>
+                        </label>
+                    </div>
+                    <label>👤 Ad soyad</label>
+                    <input id="profileName" type="text" placeholder="Ad soyad">
+                    <label>📅 Doğum tarihi</label>
+                    <input id="profileBirthDate" type="date">
+                    <label>📞 Telefon</label>
+                    <input id="profilePhone" type="tel" placeholder="5xx xxx xx xx" inputmode="numeric">
+                    <label>✉️ E-posta</label>
+                    <input id="profileEmail" type="email" placeholder="ornek@mail.com">
+                </div>
+                <div class="profile-edit-col">
+                    <h3>Sağlık</h3>
+                    <label>🏥 Kronik / teşhisli hastalıklar</label>
+                    <textarea id="profileConditions" rows="3" placeholder="Örn. tansiyon, şeker…"></textarea>
+                    <label>⚠️ Alerjiler</label>
+                    <textarea id="profileAllergies" rows="2" placeholder="Örn. penisilin…"></textarea>
+                    <div class="profile-edit-split">
+                        <div>
+                            <label>🧍 Kilo (kg)</label>
+                            <input id="profileWeight" type="number" min="20" max="300" step="0.1" placeholder="70">
+                        </div>
+                        <div>
+                            <label>📏 Boy (cm)</label>
+                            <input id="profileHeight" type="number" min="50" max="250" step="1" placeholder="170">
+                        </div>
+                    </div>
+                    <label>🚨 Acil durum kişisi</label>
+                    <input id="profileEmergencyName" type="text" placeholder="Ad soyad">
+                    <label>☎️ Acil durum telefonu</label>
+                    <input id="profileEmergencyPhone" type="tel" placeholder="5xx xxx xx xx" inputmode="numeric">
+                    <label>📋 Ek notlar</label>
+                    <textarea id="profileNotes" rows="3" placeholder="İsteğe bağlı"></textarea>
+                </div>
+            </div>
+            <p id="profileStatus" class="login-status" role="status"></p>
+            <div class="profile-edit-actions">
+                <button type="button" class="btn btn-primary" style="width:auto;min-width:160px;" onclick="saveElderProfile()">Kaydet</button>
+                <button type="button" class="btn btn-ghost" style="width:auto;" onclick="cancelProfileEdit()">İptal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- İlk giriş: profil tamamla (kayıtta olmayan alanlar) -->
+    <div id="profileSetupModal" class="med-add-modal">
+        <div class="med-add-modal-card profile-edit-modal-card profile-setup-card">
+            <div class="profile-edit-head">
+                <div>
+                    <h3>Profilinizi tamamlayın</h3>
+                    <p class="profile-setup-lead">Kayıtta olmayan sağlık ve acil bilgileri. İsterseniz şimdi doldurun, isterseniz atlayın.</p>
+                </div>
+            </div>
+            <div class="profile-edit-grid">
+                <div class="profile-edit-col">
+                    <h3>İletişim &amp; ölçü</h3>
+                    <label>📞 Telefon</label>
+                    <input id="setupPhone" type="tel" placeholder="5xx xxx xx xx" inputmode="numeric">
+                    <label>✉️ E-posta</label>
+                    <input id="setupEmail" type="email" placeholder="ornek@mail.com">
+                    <div class="profile-edit-split">
+                        <div>
+                            <label>🧍 Kilo (kg)</label>
+                            <input id="setupWeight" type="number" min="20" max="300" step="0.1" placeholder="70">
+                        </div>
+                        <div>
+                            <label>📏 Boy (cm)</label>
+                            <input id="setupHeight" type="number" min="50" max="250" step="1" placeholder="170">
+                        </div>
+                    </div>
+                    <label>📷 Profil fotoğrafı (isteğe bağlı)</label>
+                    <div class="profile-photo-edit">
+                        <img id="setupPhotoPreview" alt="" hidden>
+                        <label class="btn btn-ghost" style="width:auto;min-height:44px;">
+                            Fotoğraf seç
+                            <input type="file" id="setupPhotoInput" accept="image/*" hidden>
+                        </label>
+                    </div>
+                </div>
+                <div class="profile-edit-col">
+                    <h3>Sağlık &amp; acil</h3>
+                    <label>🏥 Kronik / teşhisli hastalıklar</label>
+                    <textarea id="setupConditions" rows="2" placeholder="Örn. tansiyon, şeker…"></textarea>
+                    <label>⚠️ Alerjiler</label>
+                    <textarea id="setupAllergies" rows="2" placeholder="Örn. penisilin…"></textarea>
+                    <label>🚨 Acil durum kişisi</label>
+                    <input id="setupEmergencyName" type="text" placeholder="Ad soyad">
+                    <label>☎️ Acil durum telefonu</label>
+                    <input id="setupEmergencyPhone" type="tel" placeholder="5xx xxx xx xx" inputmode="numeric">
+                    <label>📋 Ek notlar</label>
+                    <textarea id="setupNotes" rows="2" placeholder="İsteğe bağlı"></textarea>
+                </div>
+            </div>
+            <p id="profileSetupStatus" class="login-status" role="status"></p>
+            <div class="profile-edit-actions">
+                <button type="button" class="btn btn-primary" style="width:auto;min-width:160px;" onclick="saveProfileSetup()">Kaydet</button>
+                <button type="button" class="btn btn-ghost" style="width:auto;" onclick="skipProfileSetup()">Şimdilik atla</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Check-in hatırlatma -->
+    <div id="checkinReminderModal" class="modal-overlay" style="display:none;">
+        <div class="modal-card">
+            <div class="modal-emoji">☀️</div>
+            <h2>Lütfen durumunuzu güncelleyin</h2>
+            <p>Bugün henüz günlük sağlık kontrolünü yapmadınız.</p>
+            <button type="button" class="btn btn-success" onclick="goToCheckinFromReminder()">Şimdi Bildir</button>
+            <button type="button" class="btn btn-ghost" onclick="dismissCheckinReminder()">Daha Sonra</button>
+        </div>
+    </div>
+
+    <!-- İlaç ekle / düzenle -->
+    <div id="medAddModal" class="med-add-modal">
+        <div class="med-add-modal-card">
+            <div id="medAddFormRoot"></div>
+        </div>
+    </div>
+
+    <!-- İlaç saati -->
+    <div id="medicationAlertModal" class="modal-overlay" style="display:none;">
+        <div class="modal-card modal-card-lg">
+            <div class="modal-emoji">💊</div>
+            <h2 id="medAlertTitle">İlaç Saati!</h2>
+            <p id="medAlertDesc">Lütfen ilacınızı alın.</p>
+            <p id="medAlertSnoozeInfo" class="muted"></p>
+            <button type="button" class="btn btn-success" onclick="logMedication('taken', 'button')">İçtim</button>
+            <button type="button" class="btn btn-primary" onclick="openMedicationCamera()">İlacı Kameraya Göster</button>
+            <button type="button" class="btn btn-ghost" onclick="dismissMedicationAlert()">Daha Sonra (10 dk)</button>
+        </div>
+    </div>
+
+    <!-- Kamera ile fotoğraf -->
+    <div id="chatCameraModal" class="modal-overlay" style="display:none;">
+        <div class="modal-card modal-card-lg">
+            <h2>Kamera</h2>
+            <video id="chatCameraVideo" autoplay playsinline muted style="width:100%;border-radius:14px;background:#0b1220;"></video>
+            <canvas id="chatCameraCanvas" hidden></canvas>
+            <p id="chatCameraStatus" class="muted"></p>
+            <button type="button" class="btn btn-success" onclick="captureChatCameraPhoto()">Fotoğraf Çek</button>
+            <button type="button" class="btn btn-ghost" onclick="closeChatCameraModal()">Kapat</button>
+        </div>
+    </div>
+
+    <script src="config.js?v=20260728p6"></script>
+    <script src="definitions.js?v=20260728p6"></script>
+    <script src="recognition.js?v=20260728p6"></script>
+    <script src="app.js?v=20260728p6"></script>
+    <script src="app-enhance.js?v=20260729a1"></script>
+</body>
+</html>

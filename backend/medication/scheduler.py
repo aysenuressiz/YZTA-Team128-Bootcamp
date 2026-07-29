@@ -66,12 +66,19 @@ def check_medications() -> None:
             if reminder_key in _sent_reminders:
                 continue
 
+            notes = medication.get("notes") or ""
+            food_timing = medication.get("food_timing") or ""
+            if "|||" in notes:
+                parts = notes.split("|||", 1)
+                food_timing = (parts[1] if len(parts) > 1 else "").strip() or food_timing
+
             payload = {
                 "aksiyon": "ILAC_HATIRLATMA",
                 "medication_id": med_id,
                 "schedule_id": schedule_id,
                 "ilac_adi": med_name,
                 "dozaj": dosage,
+                "food_timing": food_timing,
             }
             _dispatch_ws_message(payload, elder_id)
             medication_service.record_reminder_sent(med_id, schedule_id)
@@ -132,8 +139,11 @@ def check_escalations() -> None:
 
 
 def start_scheduler() -> None:
+    from services.checkin_alerts import check_missing_checkins
+
     scheduler = BackgroundScheduler(timezone=str(LOCAL_TZ))
     scheduler.add_job(check_medications, "interval", minutes=1, id="med_check")
     scheduler.add_job(check_escalations, "interval", minutes=1, id="med_escalation")
+    scheduler.add_job(check_missing_checkins, "interval", minutes=15, id="checkin_missing")
     scheduler.start()
-    print("[SCHEDULER] Başlatıldı (Europe/Istanbul). İlaç hatırlatma + eskalasyon aktif.")
+    print("[SCHEDULER] Başlatıldı (Europe/Istanbul). İlaç + check-in eksikliği aktif.")

@@ -177,6 +177,17 @@ async def text_chat(data: TextMessageModel):
                 content=ai_response,
                 user_id=data.user_id,
             )
+            try:
+                from services import activity_service
+
+                activity_service.log_activity_event(
+                    event_type="chat",
+                    user_id=data.user_id,
+                    elder_id=elder_id,
+                    meta={"channel": "text"},
+                )
+            except Exception:
+                pass
             return {
                 "ai_response": ai_response,
                 "intent": result.get("intent"),
@@ -240,6 +251,35 @@ async def voice_chat(
         )
         
         user_text = transcription.text
+
+        junk_markers = (
+            "altyazı",
+            "altyazi",
+            "m.k.",
+            "subtitle",
+            "thanks for watching",
+            "thank you for watching",
+        )
+        cleaned = (user_text or "").strip()
+        low = cleaned.lower()
+        if (
+            not cleaned
+            or len(cleaned) < 2
+            or any(marker in low for marker in junk_markers)
+            or low in {"sessizlik", ".", "..."}
+        ):
+            user_text = ""
+            ai_response = (
+                f"{display_name}, sesini net alamadım. "
+                "Butona basıp biraz daha net konuşur musun?"
+            )
+            return {
+                "user_transcription": "",
+                "text": "",
+                "ai_response": ai_response,
+                "response": ai_response,
+                "message": ai_response,
+            }
 
         if not user_text or user_text.strip() == "":
             user_text = "Sessizlik"
@@ -365,6 +405,17 @@ async def daily_checkin(data: CheckinModel):
             mood=data.mood,
             elder_id=elder_id,
         )
+        try:
+            from services import activity_service
+
+            activity_service.log_activity_event(
+                event_type="checkin",
+                user_id=data.user_id or data.conversation_id,
+                elder_id=elder_id,
+                meta={"mood": data.mood},
+            )
+        except Exception:
+            pass
         return {"status": "success", "mood": data.mood}
     except Exception as e:
         print("!!! CHECKIN HATASI:", str(e))
@@ -394,10 +445,51 @@ async def checkin_status(conversation_id: str):
         print("!!! CHECKIN-STATUS HATASI:", str(e))
         raise HTTPException(status_code=500, detail="Check-in durumu alınamadı.")
 
+
+class ActivityEventModel(BaseModel):
+    event_type: str
+    user_id: str | None = None
+    elder_id: str | None = None
+    meta: dict | None = None
+
+
+@app.post("/api/activity")
+async def post_activity(data: ActivityEventModel):
+    """Kiosk etkileşimini activity_events tablosuna yazar."""
+    try:
+        from services import activity_service
+
+        row = activity_service.log_activity_event(
+            event_type=data.event_type,
+            user_id=data.user_id,
+            elder_id=data.elder_id,
+            meta=data.meta or {},
+        )
+        if not row:
+            return {"status": "skipped"}
+        return {"status": "success"}
+    except Exception as e:
+        print("!!! ACTIVITY HATASI:", str(e))
+        raise HTTPException(status_code=500, detail="Aktivite kaydedilemedi.")
+
+
+@app.get("/api/activity/summary")
+async def activity_summary(user_id: str | None = None, elder_id: str | None = None):
+    try:
+        from services import activity_service
+
+        return {
+            "status": "success",
+            **activity_service.get_activity_summary(user_id=user_id, elder_id=elder_id),
+        }
+    except Exception as e:
+        print("!!! ACTIVITY-SUMMARY HATASI:", str(e))
+        raise HTTPException(status_code=500, detail="Aktivite özeti alınamadı.")
+
+
 @app.post("/api/medication")
 async def take_medication(data: MedModel):
     return {"status": "success"}
-
 # İlaç tanıma: backend/medication/router.py
 
 @app.post("/api/family/generate-ai-summary")
@@ -685,62 +777,75 @@ async def elderly_login(data: ElderlyLoginModel):
 class SummaryRequestModel(BaseModel):
     conversation_id: str
 
-@app.get("/api/family/dashboard-summary/{elderly_id}")
-async def dashboard_summary(elderly_id: str):
-    """
-    dashboard.js bu endpoint'i çağırıyordu ama main.py'de hiç tanımlı değildi (404 sebebi buydu).
-    Not: Şu an veritabanı şemasında ilaç uyumu (medication) ve aktivite (activity) için
-    kalıcı bir kayıt mekanizması yok (/api/medication endpoint'i hiçbir şeyi veritabanına yazmıyor).
-    Bu yüzden o iki alanı gerçek veri gelene kadar dürüstçe "Takip edilmiyor" olarak dönüyoruz;
-    sadece check-in (mood) verisi gerçek veritabanından geliyor.
-    """
-    try:
-        checkin = get_today_checkin_status(conversation_id=elderly_id)
-        latest_mood = checkin["mood"] if checkin else "normal"
-
-        return {
-            "success": True,
-            "latest_mood": latest_mood,
-            "medication_status": "Takip edilmiyor",
-            "activity_status": "Takip edilmiyor"
-        }
-    except Exception as e:
-        print("!!! DASHBOARD-SUMMARY HATASI:", str(e))
-        raise HTTPException(status_code=500, detail="Panel özeti alınamadı.")
-
+# Özet + sohbet dökümü: routers/health.py
 
 @app.post("/api/family/generate-ai-summary")
 async def generate_ai_summary(data: SummaryRequestModel):
-    """dashboard.js bu endpoint'i de çağırıyordu ama main.py'de tanımlı değildi (404 sebebi buydu)."""
+    """Aile paneli günlük AI özeti — user_id veya elder sohbetleri üzerinden."""
     try:
-        # ÖNEMLİ: Sohbet mesajları elderly_id (users.id) ile değil, sayfa her açıldığında
-        # rastgele üretilen bir "activeChatId" (conversation_id) ile kaydediliyor (bkz. app.js).
-        # Bu yüzden conversation_id üzerinden arama yapmak mesajları hiç bulamıyordu.
-        # Mesajlar gönderilirken gerçek kullanıcı kimliği ayrıca "user_id" sütununa da yazılıyor
-        # (app.js -> realUserId), o yüzden burada asıl aramayı user_id üzerinden yapıyoruz.
-        #
-        # Ayrıca bu "günlük özet" olduğu için sadece BUGÜNÜN mesajlarını çekiyoruz.
-        # Öncesinde tarih filtresi yoktu, bu yüzden dünkü/önceki günlerin mesajları da
-        # son-15 mesaj limitine dahil olup özete karışabiliyordu.
         today_start = datetime.now().strftime("%Y-%m-%dT00:00:00")
+        chat_rows = []
 
-        messages_response = supabase.table("messages") \
-            .select("role, content") \
-            .eq("user_id", data.conversation_id) \
-            .gte("created_at", today_start) \
-            .order("created_at", desc=True) \
-            .limit(30) \
-            .execute()
+        # 1) messages.user_id = elderly users.id (SQL sonrası yeni mesajlar)
+        try:
+            messages_response = (
+                supabase.table("messages")
+                .select("role, content")
+                .eq("user_id", data.conversation_id)
+                .gte("created_at", today_start)
+                .order("created_at", desc=True)
+                .limit(30)
+                .execute()
+            )
+            chat_rows = messages_response.data or []
+        except Exception as user_id_err:
+            print("[AI-SUMMARY] user_id sorgusu atlandı:", user_id_err)
 
-        if not messages_response.data:
+        # 2) Fallback: elder → conversations → messages (eski kayıtlar)
+        if not chat_rows:
+            try:
+                from medication import service as medication_service
+
+                elder = medication_service.resolve_elder_for_user(data.conversation_id, "Yakınız")
+                elder_id = elder.get("id")
+                if elder_id:
+                    convs = (
+                        supabase.table("conversations")
+                        .select("id")
+                        .eq("elder_id", elder_id)
+                        .order("started_at", desc=True)
+                        .limit(20)
+                        .execute()
+                    )
+                    conv_ids = [c["id"] for c in (convs.data or [])]
+                    for i in range(0, len(conv_ids), 15):
+                        chunk = conv_ids[i : i + 15]
+                        res = (
+                            supabase.table("messages")
+                            .select("role, content, created_at")
+                            .in_("conversation_id", chunk)
+                            .gte("created_at", today_start)
+                            .order("created_at", desc=True)
+                            .limit(30)
+                            .execute()
+                        )
+                        chat_rows.extend(res.data or [])
+                    chat_rows.sort(key=lambda m: str(m.get("created_at") or ""), reverse=True)
+                    chat_rows = chat_rows[:30]
+            except Exception as fallback_err:
+                print("[AI-SUMMARY] elder fallback atlandı:", fallback_err)
+
+        if not chat_rows:
             return {
                 "success": True,
-                "summary": "Bugün henüz dijital refakatçi ile bir sohbet gerçekleşmedi. Yaşlınızın genel durumu stabil görünüyor."
+                "summary": (
+                    "Bugün henüz dijital refakatçi ile bir sohbet gerçekleşmedi. "
+                    "Yaşlınızın genel durumu stabil görünüyor."
+                ),
             }
 
-        chat_history = list(reversed(messages_response.data))
+        chat_history = list(reversed(chat_rows))
 
-        # İlgili yaşlının gerçek adını çekiyoruz (sabit isim kullanmıyoruz)
         elderly_name = "kullanıcı"
         try:
             user_resp = supabase.table("users").select("name").eq("id", data.conversation_id).execute()
@@ -767,10 +872,10 @@ async def generate_ai_summary(data: SummaryRequestModel):
             model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": ai_family_prompt},
-                {"role": "user", "content": f"Analiz edilecek sohbet geçmişi:\n{formatted_history}"}
+                {"role": "user", "content": f"Analiz edilecek sohbet geçmişi:\n{formatted_history}"},
             ],
             max_tokens=200,
-            temperature=0.5
+            temperature=0.5,
         )
 
         ai_summary = response.choices[0].message.content.strip()
@@ -844,6 +949,255 @@ async def credentials_login(request: CredentialsAuthRequest):
     except Exception as e:
         print("!!! CREDENTIALS-LOGIN HATASI:", str(e))
         raise HTTPException(status_code=400, detail="Giriş esnasında bir hata oluştu.")
+
+
+# ==========================================
+# 8. PROFİL + SOHBET RESİM
+# ==========================================
+class ElderProfileModel(BaseModel):
+    full_name: str | None = None
+    birth_date: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    conditions: str | None = None
+    allergies: str | None = None
+    height_cm: float | None = None
+    weight_kg: float | None = None
+    emergency_name: str | None = None
+    emergency_phone: str | None = None
+    notes: str | None = None
+    profile_photo_url: str | None = None
+
+
+@app.get("/api/elder-profile/{user_id}")
+async def get_elder_profile(user_id: str):
+    try:
+        from database import supabase as sb
+
+        row = (
+            sb.table("elder_profiles")
+            .select("*")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        profile = (row.data or [None])[0] or {"user_id": user_id}
+
+        # Kullanıcı tablosundan kişisel alanları tamamla
+        try:
+            user_row = (
+                sb.table("users")
+                .select("*")
+                .eq("id", user_id)
+                .limit(1)
+                .execute()
+            )
+            user = (user_row.data or [None])[0] or {}
+            name_candidates = [
+                user.get("full_name"),
+                user.get("name"),
+                user.get("display_name"),
+            ]
+            if not profile.get("full_name"):
+                profile["full_name"] = next((v for v in name_candidates if v), None)
+            for src, dest in (
+                ("birth_date", "birth_date"),
+                ("phone", "phone"),
+                ("phone_number", "phone"),
+                ("email", "email"),
+                ("mail", "email"),
+            ):
+                if not profile.get(dest) and user.get(src):
+                    profile[dest] = user.get(src)
+        except Exception as user_err:
+            print("!!! ELDER-PROFILE user merge:", user_err)
+
+        return {"status": "success", "profile": profile}
+    except Exception as e:
+        print("!!! ELDER-PROFILE GET:", e)
+        return {"status": "success", "profile": {"user_id": user_id}}
+
+
+@app.put("/api/elder-profile/{user_id}")
+async def put_elder_profile(user_id: str, body: ElderProfileModel):
+    try:
+        from database import supabase as sb
+
+        def _num(value):
+            if value is None or value == "":
+                return None
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+        payload = {
+            "user_id": user_id,
+            "full_name": (body.full_name or "").strip() or None,
+            "birth_date": body.birth_date or None,
+            "phone": (body.phone or "").strip(),
+            "email": (body.email or "").strip(),
+            "conditions": (body.conditions or "").strip(),
+            "allergies": (body.allergies or "").strip(),
+            "height_cm": _num(body.height_cm),
+            "weight_kg": _num(body.weight_kg),
+            "emergency_name": (body.emergency_name or "").strip(),
+            "emergency_phone": (body.emergency_phone or "").strip(),
+            "notes": (body.notes or "").strip(),
+            "profile_photo_url": body.profile_photo_url,
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        if not payload["full_name"]:
+            payload.pop("full_name")
+        # Boş photo'yu ezmeyelim
+        if not payload["profile_photo_url"]:
+            payload.pop("profile_photo_url")
+
+        existing = (
+            sb.table("elder_profiles")
+            .select("id")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        if existing.data:
+            try:
+                sb.table("elder_profiles").update(payload).eq("user_id", user_id).execute()
+            except Exception:
+                # Yeni kolonlar henüz yoksa temel alanlarla kaydet
+                basic = {
+                    "conditions": payload["conditions"],
+                    "emergency_name": payload["emergency_name"],
+                    "emergency_phone": payload["emergency_phone"],
+                    "notes": payload["notes"],
+                    "updated_at": payload["updated_at"],
+                }
+                sb.table("elder_profiles").update(basic).eq("user_id", user_id).execute()
+        else:
+            try:
+                sb.table("elder_profiles").insert(payload).execute()
+            except Exception:
+                basic = {
+                    "user_id": user_id,
+                    "conditions": payload["conditions"],
+                    "emergency_name": payload["emergency_name"],
+                    "emergency_phone": payload["emergency_phone"],
+                    "notes": payload["notes"],
+                    "updated_at": payload["updated_at"],
+                }
+                sb.table("elder_profiles").insert(basic).execute()
+
+        # İsim güncellemesi users tablosuna da yazılsın
+        if body.full_name:
+            try:
+                sb.table("users").update({"full_name": body.full_name.strip(), "name": body.full_name.strip()}).eq("id", user_id).execute()
+            except Exception:
+                pass
+
+        return {"status": "success", "profile": payload}
+    except Exception as e:
+        print("!!! ELDER-PROFILE PUT:", e)
+        raise HTTPException(
+            status_code=400,
+            detail="Profil kaydedilemedi. elder_profiles tablosunu oluşturduğunuzdan emin olun.",
+        )
+
+
+@app.post("/api/chat-image")
+async def chat_image(
+    file: UploadFile = File(...),
+    message: str = Form(""),
+    conversation_id: str = Form(...),
+    user_id: str = Form(None),
+    user_name: str = Form(None),
+    elder_id: str = Form(None),
+):
+    """Sohbet görseli + isteğe bağlı mesaj → vision veya metin orkestratörü."""
+    display_name = user_name or "canım"
+    try:
+        raw = await file.read()
+        if not raw:
+            raise HTTPException(status_code=400, detail="Boş dosya")
+
+        b64 = base64.b64encode(raw).decode("ascii")
+        mime = file.content_type or "image/jpeg"
+        caption = (message or "").strip()
+        user_prompt = caption or "Bu görseli incele ve Türkçe yanıt ver."
+
+        ai_response = None
+        try:
+            vision = groq_client.chat.completions.create(
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Sen Yanımda Al adlı nazik bir refakatçi asistansın. "
+                            "Yaşlı kullanıcıya sade, sıcak ve anlaşılır Türkçe cevap ver. "
+                            "Görseli kullanıcının sorusuna göre yorumla; ilaç, yiyecek, "
+                            "belge veya genel bir fotoğraf olabilir. "
+                            "Kesin tıbbi teşhis koyma; kuşku varsa aileye veya "
+                            "eczacıya/doktora danışmasını söyle."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{mime};base64,{b64}"},
+                            },
+                        ],
+                    },
+                ],
+                max_completion_tokens=400,
+            )
+            ai_response = vision.choices[0].message.content
+        except Exception as vision_err:
+            print("!!! CHAT-IMAGE vision:", vision_err)
+            from orchestrator.graph import is_orchestrator_enabled, run_orchestrator
+
+            text_fallback = (
+                f"{user_prompt} (Kullanıcı bir görsel gönderdi; görsel ayrıntılı "
+                "okunamadı. Genel, nazik bir yanıt ver.)"
+            )
+            if is_orchestrator_enabled():
+                resolved = elder_id or _resolve_elder_id_for_chat(user_id, user_name)
+                result = run_orchestrator(
+                    message=text_fallback,
+                    conversation_id=conversation_id,
+                    elder_id=resolved,
+                    user_name=user_name,
+                    user_id=user_id,
+                )
+                ai_response = result["ai_response"]
+            else:
+                ai_response = (
+                    f"{display_name}, fotoğrafını aldım ama şu an görseli net "
+                    "okuyamadım. Ne sormak istediğini yazarsan yardımcı olurum."
+                )
+
+        save_message(
+            conversation_id=conversation_id,
+            role="user",
+            content=f"[Fotoğraf] {user_prompt}",
+            user_id=user_id,
+            elder_id=elder_id,
+        )
+        save_message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=ai_response,
+            user_id=user_id,
+            elder_id=elder_id,
+        )
+        return {"ai_response": ai_response, "user_message": user_prompt}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("!!! CHAT-IMAGE:", e)
+        raise HTTPException(status_code=400, detail=f"Resim işlenemedi: {e}")
 
 
 if __name__ == "__main__":

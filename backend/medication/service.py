@@ -90,16 +90,22 @@ def resolve_elder_for_user(user_id: str, user_name: str) -> dict[str, Any]:
     return created
 
 
-def list_medications(elder_id: str, today_only: bool = False) -> list[dict[str, Any]]:
-    medications = (
+def list_medications(
+    elder_id: str,
+    today_only: bool = False,
+    include_inactive: bool = False,
+) -> list[dict[str, Any]]:
+    query = (
         supabase.table("medications")
         .select("*, medication_schedules(*)")
         .eq("elder_id", elder_id)
-        .eq("is_active", True)
         .order("created_at")
-        .execute()
-        .data
     )
+    # Günlük listede yalnızca aktif; "tüm ilaçlar"da pasifler de görünsün
+    if today_only or not include_inactive:
+        query = query.eq("is_active", True)
+
+    medications = query.execute().data
 
     if not today_only:
         return medications
@@ -294,6 +300,27 @@ def get_today_logs_for_medication(medication_id: str) -> list[dict[str, Any]]:
     return response.data or []
 
 
+def count_today_snoozes(medication_id: str, schedule_id: str | None = None) -> int:
+    logs = get_today_logs_for_medication(medication_id)
+    snoozed = [log for log in logs if log.get("status") == "snoozed"]
+    if schedule_id is None:
+        return len(snoozed)
+    schedule_res = (
+        supabase.table("medication_schedules")
+        .select("time_of_day")
+        .eq("id", schedule_id)
+        .limit(1)
+        .execute()
+    )
+    time_str = (schedule_res.data[0].get("time_of_day") if schedule_res.data else "") or ""
+    matched = [
+        log
+        for log in snoozed
+        if _time_matches_scheduled(time_str, log.get("scheduled_at"))
+    ]
+    return len(matched) if time_str else len(snoozed)
+
+
 def has_schedule_been_resolved_today(medication_id: str, schedule_id: str | None) -> bool:
     logs = get_today_logs_for_medication(medication_id)
     resolved_statuses = {"taken", "missed", "wrong_medication"}
@@ -345,7 +372,27 @@ def create_medication_log(
         "confirmed_at": now if status in {"taken", "wrong_medication"} else None,
         "confirmation_method": confirmation_method,
     }
-    return supabase.table("medication_logs").insert(payload).execute().data[0]
+    row = supabase.table("medication_logs").insert(payload).execute().data[0]
+    if status in {"taken", "missed", "wrong_medication", "snoozed"}:
+        try:
+            from services import activity_service
+
+            med = (
+                supabase.table("medications")
+                .select("elder_id, name")
+                .eq("id", medication_id)
+                .limit(1)
+                .execute()
+            )
+            med_row = (med.data or [None])[0] or {}
+            activity_service.log_activity_event(
+                event_type="medication",
+                elder_id=med_row.get("elder_id"),
+                meta={"status": status, "medication_name": med_row.get("name")},
+            )
+        except Exception as error:
+            print(f"[ACTIVITY] İlaç aktivitesi yazılamadı: {error}")
+    return row
 
 
 def was_reminder_sent_today(medication_id: str, schedule_id: str) -> bool:

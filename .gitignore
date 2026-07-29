@@ -32,3 +32,6 @@ Yanimda_AI_Proje_Dokumani.pdf
 # Orchestrator long-term memory storage
 backend/orchestrator/memory/data/
 insert_test_data.py
+# Supabase local migrations / CLI (SQL Editor'de manuel uygulanir)
+supabase/
+

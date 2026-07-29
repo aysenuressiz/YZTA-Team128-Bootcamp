@@ -23,7 +23,10 @@ function clearStaleSessionKeys() {
 }
 
 function persistAuthSession({ userId, userName, elderId = null, role = "elderly" }) {
+    const needsSetup = localStorage.getItem("needs_profile_setup") === "1";
     clearStaleSessionKeys();
+    localStorage.removeItem("kiosk_demo_mode");
+    if (needsSetup) localStorage.setItem("needs_profile_setup", "1");
     if (userId) localStorage.setItem("user_id", userId);
     if (userName) localStorage.setItem("user_name", userName);
     localStorage.setItem("user_role", role);
@@ -211,7 +214,7 @@ async function startFaceRecognition() {
                 role: "elderly",
             });
             setTimeout(() => {
-                window.location.href = "index.html";
+                window.location.href = "app.html";
             }, 1100);
             return;
         }
@@ -322,7 +325,7 @@ async function loginWithCredentials(event) {
                 elderId: data.elder_id || null,
                 role: "elderly",
             });
-            window.location.href = "index.html";
+            window.location.href = "app.html";
         } else {
             show(data.detail || "Giriş başarısız. Bilgilerinizi kontrol edin.", "error");
         }
@@ -932,6 +935,7 @@ async function handleRegister(event) {
             const okMsg = resultData.message || "Kayıt tamamlandı. Giriş ekranına yönlendiriliyorsunuz...";
             showStatus("✔️ " + okMsg, "ok");
             if (typeof clearStaleSessionKeys === "function") clearStaleSessionKeys();
+            localStorage.setItem("needs_profile_setup", "1");
             window.location.assign("login.html");
             return;
         }

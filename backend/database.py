@@ -77,16 +77,34 @@ def save_message(conversation_id: str, role: str, content: str, user_id: str = N
             except Exception:
                 pass
 
-        # 3. Mesajı kaydet (şemada user_id kolonu yok)
-        supabase.table("messages").insert({
+        # 3. Mesajı kaydet
+        payload = {
             "conversation_id": conversation_id,
             "role": role,
             "content": content,
-        }).execute()
+        }
+        if user_id:
+            payload["user_id"] = user_id
+        if resolved_elder_id:
+            # elder_id kolonu yoksa insert yine de denenebilir; hata olursa fallback
+            try:
+                supabase.table("messages").insert({**payload, "elder_id": resolved_elder_id}).execute()
+                return
+            except Exception:
+                pass
+        supabase.table("messages").insert(payload).execute()
 
     except Exception as e:
         print(f"[VERİTABANI HATASI] Mesaj kaydedilemedi: {str(e)}")
-
+        # user_id kolonu yoksa tekrarsız dene
+        try:
+            supabase.table("messages").insert({
+                "conversation_id": conversation_id,
+                "role": role,
+                "content": content,
+            }).execute()
+        except Exception as e2:
+            print(f"[VERİTABANI HATASI] Mesaj fallback da başarısız: {str(e2)}")
 
 def make_conversation_title(first_message: str | None, created_at: str | None = None) -> str:
     """İlk kullanıcı mesajından kısa başlık üretir (ChatGPT tarzı)."""
