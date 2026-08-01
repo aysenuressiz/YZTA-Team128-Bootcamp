@@ -31,7 +31,11 @@ async def list_elder_medications(
     elder_id: str,
     today_only: bool = Query(default=False),
 ):
-    medications = medication_service.list_medications(elder_id, today_only=today_only)
+    medications = medication_service.list_medications(
+        elder_id,
+        today_only=today_only,
+        include_inactive=not today_only,
+    )
     return {"status": "success", "medications": medications}
 
 

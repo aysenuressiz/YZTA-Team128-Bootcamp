@@ -33,7 +33,7 @@ header {
     padding: 15px;
     background: var(--card-bg);
     border-bottom: 1px solid #E2E8F0;
-    z-index: 10;
+    z-index: 20;
 }
 
 header h1 {
@@ -50,33 +50,183 @@ header h1 {
     display: flex;
     flex-direction: row;
     overflow: hidden;
+    position: relative;
 }
 
-/* GEÇMİŞ PANELİ SİDEBAR */
-.history-sidebar {
-    width: 260px;
+nav {
+    width: 140px;
     background: #FFFFFF;
     border-right: 2px solid #E2E8F0;
     display: flex;
     flex-direction: column;
-    padding: 20px 15px;
+    padding: 10px;
+    gap: 10px;
+    flex-shrink: 0;
+    z-index: 40;
+}
+
+/* GEÇMİŞ PANELİ — nav'ın hemen sağında */
+.history-sidebar {
+    width: 260px;
+    max-width: 85vw;
+    background: #F8FAFC;
+    border-right: 1px solid #E2E8F0;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 12px;
     overflow-y: auto;
-    gap: 20px;
+    gap: 10px;
+    flex-shrink: 0;
+    transition: transform 0.25s ease, width 0.25s ease, margin 0.25s ease, opacity 0.2s ease;
+}
+
+.history-sidebar.is-collapsed {
+    width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    margin: 0;
+    border-right-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.history-sidebar-inner {
+    min-width: 230px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.history-sidebar-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 4px;
 }
 
 .history-section-title {
-    font-size: 16px;
+    font-size: 13px;
     font-weight: 700;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 8px;
+    letter-spacing: 0.6px;
+    margin: 0;
+}
+
+.sidebar-collapse-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.sidebar-collapse-btn:hover {
+    background: #E2E8F0;
+    color: var(--text-main);
+}
+
+.history-new-chat {
+    width: 100%;
+    border: none;
+    border-radius: 12px;
+    background: var(--brand-gradient);
+    color: #fff;
+    cursor: pointer;
+    padding: 12px 14px;
+    font-size: 15px;
+    font-weight: 700;
+    box-shadow: 0 6px 14px rgba(59, 130, 246, 0.22);
+}
+
+.history-new-chat:hover {
+    filter: brightness(1.05);
+}
+
+.history-reopen-btn {
+    align-self: flex-start;
+    width: 36px;
+    height: 36px;
+    margin: 12px 4px 0 0;
+    flex-shrink: 0;
+    font-size: 16px;
+    display: none;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    color: var(--text-main);
+}
+
+.history-reopen-btn.is-visible {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.history-empty-hint {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin: 4px;
+}
+
+.sidebar-backdrop {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .history-sidebar {
+        position: absolute;
+        left: 140px;
+        top: 0;
+        bottom: 0;
+        z-index: 30;
+        box-shadow: 8px 0 24px rgba(15, 23, 42, 0.12);
+        transform: translateX(0);
+    }
+
+    .history-sidebar.is-collapsed {
+        width: 280px;
+        padding: 20px 15px;
+        opacity: 1;
+        transform: translateX(calc(-100% - 8px));
+        pointer-events: none;
+    }
+
+    .history-reopen-btn.is-visible {
+        display: flex;
+    }
+
+    .sidebar-backdrop.is-visible {
+        display: block;
+        position: absolute;
+        left: 140px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(15, 23, 42, 0.35);
+        z-index: 25;
+    }
+}
+
+.history-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin: 0;
 }
 
 .history-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
 .history-item {
@@ -265,16 +415,6 @@ header h1 {
 .routine-item.done {
     background: #F0FDF4;
     border-color: #BBF7D0;
-}
-
-nav {
-    width: 140px;
-    background: #FFFFFF;
-    border-right: 2px solid #E2E8F0;
-    display: flex;
-    flex-direction: column;
-    padding: 10px;
-    gap: 10px;
 }
 
 .nav-btn {

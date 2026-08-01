@@ -3,66 +3,143 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Yanımda Al - Giriş Yap</title>
-    <link rel="stylesheet" href="sheet.css">
+    <title>Yanımda Al — Giriş Yap</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="login.css?v=20260721l2">
 </head>
-<body>
-    <div class="auth-container">
-        <div class="auth-header">
-            <h1>Yanımda Al</h1>
-            <p>Dijital Refakatçi Sistemine Hoş Geldiniz</p>
-        </div>
+<body class="login-page">
+    <div class="ambient" aria-hidden="true">
+        <span class="orb orb-a"></span>
+        <span class="orb orb-b"></span>
+    </div>
 
-        <div class="tab-container">
-            <button class="tab-btn active" onclick="switchAuthTab('elderly')">👵👴 Yaşlı Girişi</button>
-            <button class="tab-btn" onclick="switchAuthTab('family')">👨‍👩‍👧‍👦 Aile Girişi</button>
-        </div>
-
-<div id="tab-elderly" class="tab-content active">
-        <div class="webcam-container">
-            <video id="webcam" autoplay playsinline></video>
-            <div class="camera-overlay"></div>
+    <div class="login-shell">
+        <header class="login-top">
+            <a class="login-back" href="onboarding.html" aria-label="Geri — Ana sayfa">← Geri</a>
+            <div class="login-brand-center">
+                <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                    <circle cx="32" cy="6" r="3" fill="#2563eb"/>
+                    <path d="M32 9 V16" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round"/>
+                    <rect x="14" y="16" width="36" height="28" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="2.2"/>
+                    <rect x="40" y="20" width="7" height="7" rx="1.5" fill="#0f766e"/>
+                    <path d="M43.5 21.5 V25.5 M41.5 23.5 H45.5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>
+                    <circle cx="24" cy="29" r="3.2" fill="#1d4ed8"/>
+                    <circle cx="40" cy="29" r="3.2" fill="#1d4ed8"/>
+                    <path d="M25 35c2.2 2.4 11.8 2.4 14 0" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <span>Yanımda Al</span>
             </div>
-            <p id="face-status" class="status-text">Kamera hazırlanıyor...</p>
-    
-            <button type="button" class="btn btn-primary" onclick="startFaceRecognition()">
-            <i class="fas fa-camera"></i> Yüzü Tara ve Giriş Yap
+            <span class="login-top-spacer" aria-hidden="true"></span>
+        </header>
+
+        <section class="login-hero">
+            <h1>Giriş yap</h1>
+            <p>Yaşlı veya refakatçi hesabınızla devam edin.</p>
+        </section>
+
+        <div class="login-tabs" role="tablist" aria-label="Giriş türü">
+            <button type="button" class="login-tab active" id="tab-btn-elderly" role="tab" aria-selected="true" onclick="switchAuthTab('elderly')">
+                <span class="tab-emoji" aria-hidden="true">🧓</span>
+                Yaşlı girişi
             </button>
-
-        <div class="alternative-login" style="margin-top: 25px; padding-top: 20px; border-top: 1px dashed #ccc;">
-            <p style="text-align: center; font-weight: bold; color: #555;">Veya Bilgilerinle Giriş Yap:</p>
-            <div class="form-group" style="margin-bottom: 10px;">
-                <input type="text" id="elderly-login-name" class="form-control" placeholder="Adınız Soyadınız (Örn: Ahmet Yılmaz)">
-                </div>
-                <div class="form-group" style="margin-bottom: 15px;">
-                <input type="number" id="elderly-login-age" class="form-control" placeholder="Yaşınız">
-            </div>
-                <button type="button" class="btn btn-secondary" onclick="loginWithCredentials()" style="background-color: #6c757d; width: 100%;">
-                    Bilgilerimle Giriş Yap
-                </button>
-            </div>
+            <button type="button" class="login-tab" id="tab-btn-family" role="tab" aria-selected="false" onclick="switchAuthTab('family')">
+                <span class="tab-emoji" aria-hidden="true">👨‍👩‍👧</span>
+                Refakatçi girişi
+            </button>
         </div>
 
-        <div id="tab-family" class="tab-content">
-            <form id="family-login-form" onsubmit="handleFamilyLogin(event)">
-                <div class="form-group">
-                    <label for="login-phone">Telefon Numarası</label>
-                    <input type="tel" id="login-phone" placeholder="5xx xxx xx xx" required>
-                </div>
-                <div class="form-group">
-                    <label for="login-password">Şifre</label>
-                    <input type="password" id="login-password" placeholder="••••••••" required>
-                </div>
-                <button type="submit" class="btn btn-primary">Giriş Yap</button>
-            </form>
-        </div>
+        <div class="login-panels">
+            <!-- YAŞLI -->
+            <section id="tab-elderly" class="login-panel active" role="tabpanel">
+                <div class="login-card">
+                    <div class="card-emoji" aria-hidden="true"><span class="emoji-bounce">👋</span></div>
+                    <h2>Yaşlı girişi</h2>
+                    <p class="hint">Telefon veya e-posta ile giriş yapın. İsterseniz yüz tarama da kullanabilirsiniz.</p>
 
-        <div class="auth-footer">
-            Hesabınız yok mu? <a href="register.html">Yeni Hesap Oluştur</a>
+                    <form id="elderly-login-form" class="login-form" novalidate onsubmit="loginWithCredentials(event)">
+                        <div class="field">
+                            <label for="elderly-login-contact">Telefon veya e-posta</label>
+                            <input id="elderly-login-contact" type="text" inputmode="email" placeholder="5xx xxx xx xx veya ornek@mail.com" autocomplete="username" required>
+                        </div>
+                        <div class="field">
+                            <label for="elderly-login-password">Şifre</label>
+                            <input id="elderly-login-password" type="password" placeholder="Şifreniz" autocomplete="current-password" required>
+                        </div>
+                        <button type="submit" class="btn btn-success login-submit">Giriş Yap</button>
+                    </form>
+
+                    <div class="login-divider" aria-hidden="true"><span>veya</span></div>
+
+                    <button type="button" class="btn btn-ghost face-login-btn" id="face-login-toggle" onclick="toggleFaceLoginPanel()">
+                        📷 Yüz tarama ile giriş yap
+                    </button>
+
+                    <div id="face-login-panel" class="face-login-panel" hidden>
+                        <div class="cam-stage" id="cam-stage">
+                            <video id="webcam" autoplay playsinline muted></video>
+                            <div id="face-scan-overlay" class="face-scan-overlay" hidden aria-live="polite">
+                                <div class="scan-bucket" aria-hidden="true">
+                                    <div class="bucket-body">
+                                        <div class="bucket-water" id="face-scan-water">
+                                            <span class="water-wave"></span>
+                                            <span class="water-wave w2"></span>
+                                        </div>
+                                    </div>
+                                    <div class="bucket-rim"></div>
+                                    <div class="bucket-handle"></div>
+                                </div>
+                                <div class="scan-pct" id="face-scan-pct">0%</div>
+                                <p class="scan-label" id="face-scan-label">Tarama başlıyor…</p>
+                            </div>
+                        </div>
+                        <p id="face-status" class="login-status" role="status">Kamera kapalı.</p>
+                        <div class="face-login-actions">
+                            <button type="button" class="btn btn-ghost" id="face-cam-open-btn" onclick="initWebcam()">Kamerayı aç</button>
+                            <button type="button" class="btn btn-primary" id="face-scan-btn" onclick="startFaceRecognition()">Yüzü tara</button>
+                        </div>
+                    </div>
+
+                    <p id="elderly-login-status" class="login-status" role="alert" aria-live="assertive"></p>
+                </div>
+
+                <p class="login-footer">
+                    Hesabınız yok mu? <a href="register.html">Yeni hesap oluştur</a>
+                </p>
+            </section>
+
+            <!-- AİLE / REFAKATÇİ -->
+            <section id="tab-family" class="login-panel" role="tabpanel" hidden>
+                <div class="login-card">
+                    <div class="card-emoji" aria-hidden="true"><span class="emoji-bounce delay">💙</span></div>
+                    <h2>Refakatçi girişi</h2>
+                    <p class="hint">Aile paneline telefon veya e-posta ve şifrenizle girin.</p>
+
+                    <form id="family-login-form" class="login-form" novalidate onsubmit="handleFamilyLogin(event)">
+                        <div class="field">
+                            <label for="family-login-contact">Telefon veya e-posta</label>
+                            <input id="family-login-contact" type="text" inputmode="email" placeholder="5xx xxx xx xx veya ornek@mail.com" autocomplete="username" required>
+                        </div>
+                        <div class="field">
+                            <label for="login-password">Şifre</label>
+                            <input id="login-password" type="password" placeholder="Şifreniz" autocomplete="current-password" required>
+                        </div>
+                        <button type="submit" class="btn btn-success login-submit">Giriş Yap</button>
+                    </form>
+
+                    <p id="family-login-status" class="login-status" role="alert" aria-live="assertive"></p>
+                </div>
+
+                <p class="login-footer">
+                    Hesabınız yok mu? <a href="register.html">Yeni hesap oluştur</a>
+                </p>
+            </section>
         </div>
     </div>
 
     <script src="config.js"></script>
-    <script src="authorization.js"></script>
+    <script src="authorization.js?v=20260721l2"></script>
+    <script src="login.js?v=20260721l2"></script>
 </body>
 </html>

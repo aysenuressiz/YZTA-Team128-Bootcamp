@@ -19,12 +19,12 @@ let activeChatId = generateUUID();
 // Bunun için login.html'de giriş yapan kullanıcının GERÇEK user_id'sini kullanıyoruz,
 // böylece farklı hesaplarla girişte check-in durumu birbirine karışmaz.
 // Giriş yapan kullanıcının gerçek adı (login.html'de kaydedilir).
-// Login akışı hiç kullanılmadan test amaçlı doğrudan index.html açıldıysa varsayılan bir isim gösterilir.
+// Login akışı hiç kullanılmadan test amaçlı doğrudan app.html açıldıysa varsayılan bir isim gösterilir.
 let userDisplayName = localStorage.getItem('user_name') || 'Ahmet Amca';
 
 let elderProfileId = localStorage.getItem('user_id');
 if (!elderProfileId) {
-    // Login akışı hiç kullanılmadan (test amaçlı) doğrudan index.html açıldıysa
+    // Login akışı hiç kullanılmadan (test amaçlı) doğrudan app.html açıldıysa
     // yine de check-in özelliği çalışsın diye geçici bir kimlik üretip saklıyoruz.
     elderProfileId = localStorage.getItem('elder_profile_id_fallback');
     if (!elderProfileId) {
@@ -45,6 +45,107 @@ const chatScroll = document.getElementById('chatScroll');
 const userInput = document.getElementById('userInput');
 const historySidebar = document.getElementById('historySidebar');
 const historyTodayList = document.getElementById('history-today');
+const historyReopenBtn = document.getElementById('historyReopenBtn');
+
+function getOwnerElderId() {
+    return localStorage.getItem('elder_id') || null;
+}
+
+function getOwnerUserId() {
+    return localStorage.getItem('user_id') || localStorage.getItem('elder_profile_id_fallback') || null;
+}
+
+async function ensureElderIdForOwner() {
+    const userId = getOwnerUserId();
+    const storedElderId = localStorage.getItem('elder_id');
+    const boundUserId = localStorage.getItem('elder_bound_user_id');
+
+    if (storedElderId && userId && boundUserId === userId) {
+        return storedElderId;
+    }
+
+    if (!userId) return null;
+
+    // Stale elder_id temizle
+    localStorage.removeItem('elder_id');
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/medications/sync-elder`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: userId,
+                user_name: userDisplayName,
+            }),
+        });
+        const data = await response.json();
+        if (response.ok && data.elder && data.elder.id) {
+            localStorage.setItem('elder_id', data.elder.id);
+            localStorage.setItem('elder_bound_user_id', userId);
+            return data.elder.id;
+        }
+    } catch (error) {
+        console.warn('elder_id çözülemedi:', error);
+    }
+    return null;
+}
+
+function isHistorySidebarOpen() {
+    return historySidebar && !historySidebar.classList.contains('is-collapsed');
+}
+
+function syncHistoryReopenBtn() {
+    if (!historyReopenBtn) return;
+    const onChat = document.getElementById('page-sohbet')?.classList.contains('active');
+    const show = onChat && historySidebar && historySidebar.classList.contains('is-collapsed');
+    historyReopenBtn.classList.toggle('is-visible', Boolean(show));
+    historyReopenBtn.classList.toggle('is-hidden', !show);
+}
+
+function openHistorySidebar() {
+    if (!historySidebar) return;
+    historySidebar.classList.remove('is-collapsed');
+    historySidebar.style.display = 'flex';
+    syncHistoryReopenBtn();
+}
+
+function closeHistorySidebar() {
+    if (!historySidebar) return;
+    historySidebar.classList.add('is-collapsed');
+    syncHistoryReopenBtn();
+}
+
+function toggleHistorySidebar() {
+    if (!historySidebar) return;
+    if (isHistorySidebarOpen()) closeHistorySidebar();
+    else openHistorySidebar();
+}
+
+function startNewChat() {
+    try {
+        switchPage("sohbet");
+    } catch (_) { /* ignore */ }
+
+    activeChatId = generateUUID();
+    const box = document.getElementById("chatBox");
+    if (box) {
+        box.innerHTML = `
+            <div class="chat-msg msg-ai">
+                Merhaba ${userDisplayName}! Yeni bir sohbete başladık. Bugün nasılsın?
+            </div>
+        `;
+    }
+    document.querySelectorAll(".history-item").forEach((el) => el.classList.remove("active-chat"));
+    openHistorySidebar();
+    if (window.matchMedia("(max-width: 900px)").matches) {
+        // mobilde listeyi açık tut, sonra isteğe göre kapatılabilir
+    }
+}
+
+window.toggleHistorySidebar = toggleHistorySidebar;
+window.closeHistorySidebar = closeHistorySidebar;
+window.openHistorySidebar = openHistorySidebar;
+window.startNewChat = startNewChat;
 
 const API_BASE_URL = (window.CONFIG && CONFIG.API_BASE_URL) || "http://127.0.0.1:8000/api";
 
@@ -65,6 +166,7 @@ async function initKioskDemoMode() {
         }
 
         localStorage.setItem('elder_id', data.elder.id);
+        localStorage.setItem('elder_bound_user_id', data.demo_user_id);
         localStorage.setItem('kiosk_demo_mode', '1');
         localStorage.setItem('user_name', 'Ahmet Amca');
         localStorage.setItem('elder_profile_id_fallback', data.demo_user_id);
@@ -84,16 +186,25 @@ async function initKioskDemoMode() {
 
 window.addEventListener('DOMContentLoaded', async () => {
     await initKioskDemoMode();
+    await ensureElderIdForOwner();
 
-    // 1. Sol menüdeki geçmiş başlıklarını çek ve oluştur (Dünküler sol menüde listelenir)
+    // Küçük ekranda geçmiş kapalı başlasın; masaüstünde açık
+    if (window.matchMedia('(max-width: 900px)').matches) {
+        closeHistorySidebar();
+    } else {
+        openHistorySidebar();
+    }
+    syncHistoryReopenBtn();
+
+    // 1. Sol menüdeki geçmiş başlıklarını çek ve oluştur
     await loadConversationsFromSupabase();
     
     // 2. Otomatik tıklama mantığını kaldırıyoruz! 
     // Sayfa her açıldığında ekran dünkü sohbetle dolmayacak, bugünün temiz oturumuyla başlayacak.
     chatBox.innerHTML = `
         <div class="chat-msg msg-ai">
-            Merhaba ${userDisplayName}! Sesini duymak çok güzel, bugün nasılsın? 
-            Konuşmak için aşağıdaki düğmeye basabilirsin.
+            Merhaba ${userDisplayName}! Ben Yanımda Al. Bugün nasılsın?
+            Yazabilir veya aşağıdaki butonla konuşabilirsin.
         </div>
     `;
     
@@ -106,7 +217,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         checkinGreetingEl.textContent = `${userDisplayName}, bugün kendini nasıl hissediyorsun?`;
     }
 
-    // İlaç listesini API'den yükle (kiosk modu — tanımlama aile panelinde)
+    // İlaç listesini API'den yükle
     if (typeof MedicationDefinitions !== 'undefined') {
         await MedicationDefinitions.init({
             mode: 'kiosk',
@@ -124,6 +235,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Demo modda check-in pop-up'ını gösterme
     if (!localStorage.getItem('kiosk_demo_mode')) {
         checkAndShowCheckinReminder();
+    }
+
+    const newChatBtn = document.getElementById('historyNewChatBtn');
+    if (newChatBtn) {
+        newChatBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            startNewChat();
+        });
     }
 });
 
@@ -178,14 +297,25 @@ function dismissCheckinReminder() {
 
 function switchPage(pageId) {
     document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
-    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-    document.getElementById(`page-${pageId}`).classList.add('active');
-    document.getElementById(`nav-${pageId}`).classList.add('active');
+    document.querySelectorAll('.nav-btn, .app-tab').forEach(btn => btn.classList.remove('active'));
+    const pageEl = document.getElementById(`page-${pageId}`);
+    if (pageEl) pageEl.classList.add('active');
+    const navEl = document.getElementById(`nav-${pageId}`);
+    if (navEl) navEl.classList.add('active');
     
     if (pageId === 'sohbet') {
-        historySidebar.style.display = 'flex';
+        if (historySidebar) {
+            if (!historySidebar.classList.contains('is-collapsed')) {
+                historySidebar.style.display = 'flex';
+            }
+        }
+        syncHistoryReopenBtn();
     } else {
-        historySidebar.style.display = 'none';
+        if (historySidebar) historySidebar.style.display = 'none';
+        if (historyReopenBtn) {
+            historyReopenBtn.classList.remove('is-visible');
+            historyReopenBtn.classList.add('is-hidden');
+        }
     }
 
     if (pageId === 'durum') {
@@ -197,6 +327,35 @@ function switchPage(pageId) {
         MedicationDefinitions.refresh();
     }
 }
+
+window.switchPage = switchPage;
+window.appendMessageToUI = appendMessageToUI;
+window.toggleVoice = toggleVoice;
+window.completeCheckin = completeCheckin;
+window.checkinFollowUpMessage = checkinFollowUpMessage;
+window.showMedicationAlert = showMedicationAlert;
+window.logMedication = logMedication;
+window.dismissMedicationAlert = dismissMedicationAlert;
+window.getOwnerElderId = getOwnerElderId;
+window.loadConversationsFromSupabase = loadConversationsFromSupabase;
+window.loadCheckinHistory = loadCheckinHistory;
+window.loadCheckinStatus = loadCheckinStatus;
+window.goToCheckinFromReminder = typeof goToCheckinFromReminder === 'function' ? goToCheckinFromReminder : undefined;
+window.dismissCheckinReminder = dismissCheckinReminder;
+window.openMedicationCamera = openMedicationCamera;
+
+// enhance.js için canlı state
+Object.defineProperty(window, 'activeChatId', { get: () => activeChatId, set: (v) => { activeChatId = v; } });
+Object.defineProperty(window, 'userDisplayName', { get: () => userDisplayName, set: (v) => { userDisplayName = v; } });
+Object.defineProperty(window, 'elderProfileId', { get: () => elderProfileId, set: (v) => { elderProfileId = v; } });
+Object.defineProperty(window, 'realUserId', { get: () => realUserId });
+Object.defineProperty(window, 'isRecording', { get: () => isRecording, set: (v) => { isRecording = v; } });
+Object.defineProperty(window, 'mediaRecorder', { get: () => mediaRecorder, set: (v) => { mediaRecorder = v; } });
+Object.defineProperty(window, 'audioChunks', { get: () => audioChunks, set: (v) => { audioChunks = v; } });
+Object.defineProperty(window, 'stream', { get: () => stream, set: (v) => { stream = v; } });
+Object.defineProperty(window, 'currentMedAlert', { get: () => currentMedAlert, set: (v) => { currentMedAlert = v; } });
+Object.defineProperty(window, 'snoozeTimer', { get: () => snoozeTimer, set: (v) => { snoozeTimer = v; } });
+window.API_BASE_URL = API_BASE_URL;
 
 // Check-in eksikliği tespiti: bugün check-in yapılmış mı, banner ile göster
 async function loadCheckinStatus() {
@@ -227,16 +386,93 @@ async function loadCheckinStatus() {
 }
 
 // Günlük check-in geçmişini çekme
+let checkinHistoryCache = [];
+let checkinChartRange = "week";
+
+function moodScore(mood) {
+    const value = String(mood || "").toLocaleLowerCase("tr-TR");
+    if (value.includes("harika") || value.includes("çok iyi") || value.includes("iyi")) return 3;
+    if (value.includes("halsiz") || value.includes("yorgun") || value.includes("kötü")) return 1;
+    return 2;
+}
+
+function setCheckinChartRange(range) {
+    checkinChartRange = range;
+    document.querySelectorAll(".checkin-chart-tab").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.range === range);
+    });
+    renderCheckinChart(checkinHistoryCache, range);
+}
+window.setCheckinChartRange = setCheckinChartRange;
+
+function renderCheckinChart(history, range) {
+    const chart = document.getElementById("checkinChart");
+    if (!chart) return;
+    const now = new Date();
+    let buckets = [];
+
+    if (range === "day") {
+        buckets = Array.from({ length: 6 }, (_, i) => {
+            const start = i * 4;
+            return {
+                label: `${String(start).padStart(2, "0")}-${String(start + 4).padStart(2, "0")}`,
+                items: history.filter((item) => {
+                    const d = new Date(item.created_at);
+                    return d.toDateString() === now.toDateString() && d.getHours() >= start && d.getHours() < start + 4;
+                }),
+            };
+        });
+    } else if (range === "month") {
+        buckets = Array.from({ length: 4 }, (_, i) => {
+            const start = new Date(now);
+            start.setDate(now.getDate() - (3 - i) * 7);
+            const end = new Date(start);
+            end.setDate(start.getDate() + 7);
+            return {
+                label: `${i + 1}. hf`,
+                items: history.filter((item) => {
+                    const d = new Date(item.created_at);
+                    return d >= start && d < end;
+                }),
+            };
+        });
+    } else {
+        buckets = Array.from({ length: 7 }, (_, i) => {
+            const day = new Date(now);
+            day.setDate(now.getDate() - (6 - i));
+            return {
+                label: day.toLocaleDateString("tr-TR", { weekday: "short" }),
+                items: history.filter((item) => new Date(item.created_at).toDateString() === day.toDateString()),
+            };
+        });
+    }
+
+    chart.innerHTML = buckets
+        .map((bucket) => {
+            const scores = bucket.items.map((item) => moodScore(item.mood));
+            const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+            const height = scores.length ? Math.max(12, Math.round((avg / 3) * 140)) : 8;
+            const cls = !scores.length ? "is-empty" : avg >= 2.5 ? "" : avg >= 1.5 ? "is-low" : "is-bad";
+            return `
+                <div class="checkin-bar" title="${bucket.items.length} kayıt">
+                    <div class="checkin-bar-fill ${cls}" style="height:${height}px"></div>
+                    <label>${bucket.label}</label>
+                </div>`;
+        })
+        .join("");
+}
+
 async function loadCheckinHistory() {
     const historyBox = document.getElementById('checkinHistory');
     try {
-        // Geçmişi çekerken hangi sohbet oturumuna bağlı olduğunu query parametresi olarak gönderiyoruz
         const response = await fetch(`${API_BASE_URL}/checkin/history?conversation_id=${elderProfileId}`);
         const data = await response.json();
         const history = data.history || [];
+        checkinHistoryCache = history;
 
         if (history.length === 0) {
-            historyBox.innerHTML = `<p style="color: var(--text-muted); font-size: 16px;">Henüz bu oturuma ait durum kaydı yok.</p>`;
+            historyBox.innerHTML = `<p class="muted">Henüz bu oturuma ait durum kaydı yok.</p>`;
+            renderCheckinChart([], checkinChartRange);
             return;
         }
 
@@ -245,36 +481,60 @@ async function loadCheckinHistory() {
             const dateStr = date.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
             const timeStr = date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
             return `
-                <div class="routine-item">
-                    <div>
-                        <strong style="display:block; font-size:18px;">${item.mood}</strong>
-                        <span style="font-size: 14px; color: var(--text-muted);">${dateStr} • ${timeStr}</span>
-                    </div>
+                <div class="checkin-history-item">
+                    <strong>${item.mood}</strong>
+                    <span>${dateStr} • ${timeStr}</span>
                 </div>
             `;
         }).join('');
+        renderCheckinChart(history, checkinChartRange);
     } catch (error) {
         console.error(error);
         historyBox.innerHTML = `<p style="color: var(--warning-color); font-size: 16px;">Kayıtlar yüklenemedi.</p>`;
     }
 }
 
-// Supabase'den Konuşma Başlıklarını (Tarihleri) Çeker
+// Supabase'den kullanıcıya özel sohbet listesini çeker (içerik başlıklı)
 async function loadConversationsFromSupabase() {
     if (!historyTodayList) return;
     historyTodayList.innerHTML = "";
 
+    const emptyHint = document.getElementById('historyEmptyHint');
+    const elderId = getOwnerElderId();
+    const userId = getOwnerUserId();
+
+    if (!elderId && !userId) {
+        if (emptyHint) emptyHint.style.display = 'block';
+        return;
+    }
+
     try {
-        const response = await fetch(`${API_BASE_URL}/conversations`);
+        const params = new URLSearchParams();
+        if (elderId) params.set('elder_id', elderId);
+        if (userId) params.set('user_id', userId);
+
+        const response = await fetch(`${API_BASE_URL}/conversations?${params.toString()}`);
         const conversations = await response.json();
 
-        conversations.forEach(conv => {
+        if (!Array.isArray(conversations) || conversations.length === 0) {
+            if (emptyHint) emptyHint.style.display = 'block';
+            return;
+        }
+
+        if (emptyHint) emptyHint.style.display = 'none';
+
+        conversations.forEach((conv) => {
             const item = document.createElement('div');
             item.className = `history-item ${conv.conversation_id === activeChatId ? 'active-chat' : ''}`;
-            item.innerText = conv.title; // Örn: "Sohbet - 02.07.2026"
-            
-            item.setAttribute('data-id', conv.conversation_id); 
-            item.onclick = () => loadSpecificChatFromServer(conv.conversation_id);
+            item.innerText = conv.title || 'Sohbet';
+            item.title = conv.title || '';
+            item.setAttribute('data-id', conv.conversation_id);
+            item.onclick = () => {
+                loadSpecificChatFromServer(conv.conversation_id);
+                if (window.matchMedia('(max-width: 900px)').matches) {
+                    closeHistorySidebar();
+                }
+            };
             historyTodayList.appendChild(item);
         });
     } catch (error) {
@@ -330,7 +590,8 @@ async function sendTextMessage() {
                 conversation_id: activeChatId, // Backend'in beklediği dinamik ID gidiyor
                 message: text,
                 user_id: realUserId,           // Mesajı gerçek kayıtlı kullanıcıya bağlar (giriş yoksa null)
-                user_name: userDisplayName    // AI'ın doğru isimle hitap edebilmesi için
+                user_name: userDisplayName,    // AI'ın doğru isimle hitap edebilmesi için
+                elder_id: getOwnerElderId(),
             })
         });
         const data = await response.json();
@@ -386,7 +647,8 @@ async function toggleVoice() {
                 formData.append("conversation_id", activeChatId); // Sesi de aktif sohbete bağlıyoruz
                 if (realUserId) formData.append("user_id", realUserId); // Mesajı gerçek kayıtlı kullanıcıya bağlar
                 formData.append("user_name", userDisplayName);    // AI'ın doğru isimle hitap edebilmesi için
-
+                const ownerElderId = getOwnerElderId();
+                if (ownerElderId) formData.append("elder_id", ownerElderId);
                 try {
                     const response = await fetch(`${API_BASE_URL}/voice-chat`, { method: "POST", body: formData });
                     const data = await response.json();
@@ -416,26 +678,91 @@ async function toggleVoice() {
     }
 }
 
+function checkinFollowUpMessage(mood) {
+    const value = String(mood || "")
+        .toLocaleLowerCase("tr-TR")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+    if (value.includes("halsiz") || value.includes("kotu") || value.includes("yorgun") || value.includes("kötü")) {
+        return pick([
+            "Durumunu ailenle paylaştık. Kendine iyi bak; istersen biraz sohbet edelim.",
+            "Teşekkürler, haber verdin. Biraz dinlenmek iyi gelebilir. İstersen yanındayım.",
+            "Not aldık ve ailen bilgilendirildi. Su içmeyi ve hafif bir mola vermeyi unutma.",
+            "Anladım, bugün biraz yorgun hissediyorsun. İstersen birlikte konuşarak rahatlarız.",
+            "Kaydettim. Ailen de haberiniz olsun diye bilgilendirildi. Kendine nazik davran.",
+        ]);
+    }
+    if (value.includes("harika") || value === "iyi" || value.includes("cok iyi") || value.includes("çok iyi")) {
+        return pick([
+            "Ne güzel! Ailen de iyi olduğunu bilmekten mutlu olacak.",
+            "Harika haber. Keyfin yerindeyse günün daha da güzel geçer.",
+            "Sevindim! Keyfin yerinde olması güzel haber. Ailene de ilettik.",
+            "Süper. Enerjin yerinde görünüyor; böyle devam.",
+            "Güzel! Bugün iyi olman herkese moral olur. Ailen de bilgilendirildi.",
+        ]);
+    }
+    return pick([
+        "Durumun kaydedildi. Ailen bilgilendirildi.",
+        "Teşekkürler, kaydınız alındı.",
+        "Bildiriminiz kaydedildi. İyi günler.",
+    ]);
+}
+
 // Sağlık kontrolü durum bildirimi (Dinamik Oturum Bağlantılı)
 async function completeCheckin(mood) {
     try {
-        await fetch(`${API_BASE_URL}/checkin`, {
+        const response = await fetch(`${API_BASE_URL}/checkin`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-                conversation_id: elderProfileId, // Check-in durumunu kalıcı kullanıcı kimliğine bağla
-                mood: mood 
-            })
+            body: JSON.stringify({
+                conversation_id: elderProfileId,
+                mood: mood,
+                elder_id: localStorage.getItem("elder_id") || null,
+                user_id: realUserId || elderProfileId,
+            }),
         });
-        document.getElementById('checkinCard').innerHTML = `
+
+        let data = {};
+        try {
+            data = await response.json();
+        } catch (_) {
+            data = {};
+        }
+
+        if (!response.ok) {
+            const detail = data.detail || "Check-in kaydedilemedi.";
+            alert(typeof detail === "string" ? detail : "Check-in kaydedilemedi.");
+            return;
+        }
+
+        const followUp = checkinFollowUpMessage(mood);
+        document.getElementById("checkinCard").innerHTML = `
             <span style="font-size: 64px;">✔️</span>
             <h2 style="color: var(--success-color); font-size: 30px; font-weight: 800;">Durumunuz Bildirildi</h2>
-            <p style="font-size: 20px; color: var(--text-muted); margin-top: 8px;">Aileniz harika olduğunuzu biliyor!</p>
+            <p style="font-size: 20px; color: var(--text-muted); margin-top: 8px;">${followUp}</p>
+            <p style="font-size: 18px; color: var(--text-main); margin-top: 12px; font-weight: 600;">Kaydedilen durum: ${mood}</p>
         `;
+
+        const banner = document.getElementById("checkinStatusBanner");
+        if (banner) {
+            const time = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+            banner.innerHTML = `
+                <div style="background:#ECFDF5; border:1px solid #A7F3D0; color:#065F46; border-radius:10px; padding:12px 16px; font-weight:600; text-align:center;">
+                    ✅ Bugün check-in yapıldı (saat ${time}, durum: ${mood})
+                </div>
+            `;
+        }
+
         appendMessageToUI(`Günlük sağlık kontrolü yapıldı: ${mood}`, "user");
         loadCheckinHistory();
         loadCheckinStatus();
-    } catch (error) { alert("Bağlantı hatası."); }
+    } catch (error) {
+        console.error(error);
+        alert("Bağlantı hatası.");
+    }
 }
 
 // İlaç onay mekanizması (eski stub — MedicationDefinitions'a yönlendirir)

@@ -5,30 +5,91 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Yanımda Al - Refakatçi Paneli</title>
     <link rel="stylesheet" href="sheet.css">
-    <link rel="stylesheet" href="family-dashboard.css">
-    <link rel="stylesheet" href="definitions.css">
+    <link rel="stylesheet" href="family-dashboard.css?v=20260729fd6">
+    <link rel="stylesheet" href="definitions.css?v=20260729fd6">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
-<body>
+<body class="family-dash">
 
     <div class="dashboard-layout">
-        <div class="sidebar">
-            <h2>Yanımda Al</h2>
-            <p style="text-align: center; font-size: 14px; color: #94A3B8;" id="welcome-family">Yükleniyor...</p>
-            <hr style="border: 0; border-top: 1px solid #334155; margin: 20px 0;">
-            <ul class="sidebar-menu">
-                <li class="active" onclick="switchDashboardTab('summary')"><i class="fas fa-chart-pie"></i> Mevcut Durum</li>
-                <li onclick="switchDashboardTab('history')"><i class="fas fa-history"></i> Geçmiş Durumlar</li>
-                <li onclick="switchDashboardTab('medications')"><i class="fas fa-pills"></i> İlaç Yönetimi</li>
-                <li onclick="switchDashboardTab('settings')"><i class="fas fa-cog"></i> Ayarlar</li>
-                <li onclick="handleLogout()" style="margin-top: 60px; color: #EF4444;"><i class="fas fa-sign-out-alt"></i> Çıkış Yap</li>
-            </ul>
-        </div>
+        <aside class="sidebar" id="sideNavRail">
+            <div class="sidebar-inner" id="dashSideNav">
+                <div class="sidebar-head">
+                    <button type="button" class="sidebar-toggle" id="navToggleBtn" onclick="toggleSideNav()" title="Menüyü daralt" aria-label="Menüyü daralt/genişlet" aria-expanded="true">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                </div>
+
+                <div class="sidebar-brand">
+                    <svg class="brand-logo" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                        <circle cx="32" cy="6" r="3" fill="#3B82F6"/>
+                        <path d="M32 9 V16" stroke="#3B82F6" stroke-width="2.2" stroke-linecap="round"/>
+                        <rect x="14" y="16" width="36" height="28" rx="10" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2.2"/>
+                        <rect x="40" y="20" width="7" height="7" rx="1.5" fill="#0F766E"/>
+                        <path d="M43.5 21.5 V25.5 M41.5 23.5 H45.5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>
+                        <circle cx="24" cy="29" r="3.2" fill="#1D4ED8"/>
+                        <circle cx="40" cy="29" r="3.2" fill="#1D4ED8"/>
+                        <path d="M25 35c2.2 2.4 11.8 2.4 14 0" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <div class="brand-text">
+                        <h2>Yanımda Al</h2>
+                        <span>Refakatçi Paneli</span>
+                    </div>
+                </div>
+
+                <p class="sidebar-welcome" id="welcome-family">Yükleniyor...</p>
+                <hr class="sidebar-divider">
+
+                <ul class="sidebar-menu">
+                    <li class="active" data-tab="summary" onclick="switchDashboardTab('summary')">
+                        <i class="fas fa-chart-pie"></i><em>Mevcut Durum</em>
+                    </li>
+                    <li data-tab="checkin" onclick="switchDashboardTab('checkin')">
+                        <i class="fas fa-sun"></i><em>Check-in</em>
+                    </li>
+                    <li data-tab="chat" onclick="switchDashboardTab('chat')">
+                        <i class="fas fa-comments"></i><em>Sohbet</em>
+                    </li>
+                    <li data-tab="medications" onclick="switchDashboardTab('medications')">
+                        <i class="fas fa-pills"></i><em>İlaç Yönetimi</em>
+                    </li>
+                    <li data-tab="alerts" onclick="switchDashboardTab('alerts')">
+                        <i class="fas fa-bell"></i><em>Uyarılar</em>
+                    </li>
+                    <li data-tab="history" onclick="switchDashboardTab('history')">
+                        <i class="fas fa-history"></i><em>Geçmiş</em>
+                    </li>
+                    <li data-tab="profile" onclick="switchDashboardTab('profile')">
+                        <i class="fas fa-user"></i><em>Yaşlı Profili</em>
+                    </li>
+                    <li data-tab="settings" onclick="switchDashboardTab('settings')">
+                        <i class="fas fa-cog"></i><em>Ayarlar</em>
+                    </li>
+                    <li class="menu-logout" onclick="handleLogout()">
+                        <i class="fas fa-sign-out-alt"></i><em>Çıkış Yap</em>
+                    </li>
+                </ul>
+            </div>
+        </aside>
 
         <div class="main-content">
-            <div class="header-bar clearfix">
-                <div class="header-title-container">
-                    <h1 style="font-size: 24px; color: var(--text-main); font-weight: 700;" id="elderly-title">Takip Edilen: ...</h1>
+            <div class="header-bar">
+                <div class="header-brand-row">
+                    <svg class="header-logo" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                        <circle cx="32" cy="6" r="3" fill="#3B82F6"/>
+                        <path d="M32 9 V16" stroke="#3B82F6" stroke-width="2.2" stroke-linecap="round"/>
+                        <rect x="14" y="16" width="36" height="28" rx="10" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2.2"/>
+                        <rect x="40" y="20" width="7" height="7" rx="1.5" fill="#0F766E"/>
+                        <path d="M43.5 21.5 V25.5 M41.5 23.5 H45.5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>
+                        <circle cx="24" cy="29" r="3.2" fill="#1D4ED8"/>
+                        <circle cx="40" cy="29" r="3.2" fill="#1D4ED8"/>
+                        <path d="M25 35c2.2 2.4 11.8 2.4 14 0" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <div class="header-title-container">
+                        <p class="header-app-name">Yanımda Al</p>
+                        <h1 id="elderly-title">Takip Edilen: ...</h1>
+                        <p class="header-subtitle">Yaşlı kiosk ekranını buradan izleyin ve yönetin.</p>
+                    </div>
                 </div>
                 <div class="header-status-container">
                     <span class="status-badge status-good" id="live-connection">
@@ -47,98 +108,228 @@
                 </div>
             </div>
 
-            <div id="sec-summary" class="dashboard-section">
+            <!-- ÖZET -->
+            <section id="sec-summary" class="dashboard-section active">
                 <div class="grid-stats">
-                    <div class="stat-card-wrapper">
-                        <div class="stat-card clearfix">
-                            <div class="stat-icon" style="color: #EF4444;"><i class="fas fa-heartbeat"></i></div>
-                            <div class="stat-info">
-                                <p style="color: var(--text-muted); margin: 0; font-size: 14px;">Son Durum</p>
-                                <h3 style="margin: 4px 0; color: var(--text-main);" id="health-status">Normal</h3>
-                            </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="color: #EF4444;"><i class="fas fa-heartbeat"></i></div>
+                        <div class="stat-info">
+                            <p>Son Durum</p>
+                            <h3 id="health-status">—</h3>
                         </div>
                     </div>
-                    <div class="stat-card-wrapper">
-                        <div class="stat-card clearfix">
-                            <div class="stat-icon" style="color: #10B981;"><i class="fas fa-pills"></i></div>
-                            <div class="stat-info">
-                                <p style="color: var(--text-muted); margin: 0; font-size: 14px;">İlaç Uyumu</p>
-                                <h3 style="margin: 4px 0; color: var(--text-main);" id="pill-status">%100 Alındı</h3>
-                            </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="color: #10B981;"><i class="fas fa-pills"></i></div>
+                        <div class="stat-info">
+                            <p>İlaç Uyumu</p>
+                            <h3 id="pill-status">—</h3>
                         </div>
                     </div>
-                    <div class="stat-card-wrapper">
-                        <div class="stat-card clearfix">
-                            <div class="stat-icon" style="color: #F59E0B;"><i class="fas fa-walking"></i></div>
-                            <div class="stat-info">
-                                <p style="color: var(--text-muted); margin: 0; font-size: 14px;">Günlük Aktivite</p>
-                                <h3 style="margin: 4px 0; color: var(--text-main);" id="activity-status">Hareketsiz</h3>
-                            </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="color: #F59E0B;"><i class="fas fa-exclamation-circle"></i></div>
+                        <div class="stat-info">
+                            <p>Açık Uyarı</p>
+                            <h3 id="alert-count-status">0</h3>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="color: #3B82F6;"><i class="fas fa-walking"></i></div>
+                        <div class="stat-info">
+                            <p>Günlük Aktivite</p>
+                            <h3 id="activity-status">—</h3>
                         </div>
                     </div>
                 </div>
 
-                <div class="panel-section" id="med-alerts-panel" style="display:none; margin-top: 20px; border-left: 4px solid #EF4444;">
-                    <h3 style="color: var(--text-main); font-weight: 600;"><i class="fas fa-exclamation-triangle" style="color: #EF4444; margin-right: 8px;"></i> İlaç Uyarıları</h3>
-                    <div id="med-alerts-list"></div>
+                <div class="panel-section" id="med-alerts-panel" hidden>
+                    <h3><i class="fas fa-exclamation-triangle" style="color:#EF4444;"></i> Son Uyarılar</h3>
+                    <div id="med-alerts-list" class="alert-list"></div>
                 </div>
 
-                <div class="panel-section" style="margin-top: 20px;">
-                    <h3 style="color: var(--text-main); font-weight: 600;"><i class="fas fa-chart-line" style="color: var(--brand-color); margin-right: 8px;"></i> Haftalık İlaç Uyumu</h3>
-                    <div id="weekly-trend-chart" style="margin-top: 12px;"></div>
+                <div class="panel-row">
+                    <div class="panel-section">
+                        <h3><i class="fas fa-chart-line" style="color:var(--brand-color);"></i> Haftalık İlaç Uyumu</h3>
+                        <div id="weekly-trend-chart" class="trend-chart"></div>
+                    </div>
+                    <div class="panel-section">
+                        <h3><i class="fas fa-robot" style="color:#F59E0B;"></i> Yapay Zeka Günlük Özeti</h3>
+                        <p class="ai-summary" id="ai-summary">Özet yükleniyor…</p>
+                    </div>
                 </div>
+            </section>
 
-                <div class="panel-section" style="margin-top: 20px;">
-                    <h3 style="color: var(--text-main); font-weight: 600;"><i class="fas fa-bell" style="color: #F59E0B; margin-right: 8px;"></i> Yapay Zeka Günlük Özeti</h3>
-                    <p style="line-height: 1.7; color: var(--text-main); margin-top: 15px; font-size: 15px;" id="ai-summary">
-                        Bugün Ahmet Amca ilaçlarını zamanında aldı. Öğleden sonra odada normalden biraz daha uzun süre hareketsiz kaldı ancak şu an genel durumu iyi görünüyor.
-                    </p>
+            <!-- CHECK-IN -->
+            <section id="sec-checkin" class="dashboard-section">
+                <div class="panel-row">
+                    <div class="panel-section">
+                        <h3><i class="fas fa-list" style="color:var(--brand-color);"></i> Check-in Geçmişi</h3>
+                        <div id="family-checkin-list" class="checkin-list">
+                            <p class="muted">Kayıtlar yükleniyor…</p>
+                        </div>
+                    </div>
+                    <div class="panel-section">
+                        <h3><i class="fas fa-chart-bar" style="color:var(--brand-color);"></i> Durum Grafiği</h3>
+                        <div class="chart-tabs">
+                            <button type="button" class="chart-tab active" data-range="week" onclick="setFamilyCheckinRange('week')">Haftalık</button>
+                            <button type="button" class="chart-tab" data-range="month" onclick="setFamilyCheckinRange('month')">Aylık</button>
+                            <button type="button" class="chart-tab" data-range="day" onclick="setFamilyCheckinRange('day')">Günlük</button>
+                        </div>
+                        <div id="family-checkin-chart" class="checkin-chart"></div>
+                    </div>
                 </div>
-            </div>
+            </section>
 
-            <div id="sec-history" class="dashboard-section" style="display: none;">
+            <!-- SOHBET -->
+            <section id="sec-chat" class="dashboard-section">
                 <div class="panel-section">
-                    <h3 style="color: var(--text-main); font-weight: 600;"><i class="fas fa-calendar-alt" style="margin-right: 8px; color: var(--brand-color);"></i> Geçmiş Loglar ve Olay Durumları</h3>
-                    <p style="color: var(--text-muted); margin-top: 5px; font-size: 14px;">Yaşlınızın gün içindeki tüm hareket ve tetiklenme geçmişi:</p>
-                    
-                    <table class="table-history">
-                        <thead>
-                            <tr>
-                                <th>Tarih / Saat</th>
-                                <th>Olay / Kategori</th>
-                                <th>Durum</th>
-                                <th>Açıklama</th>
-                            </tr>
-                        </thead>
-                        <tbody id="history-table-body">
-                            <tr><td colspan="4">Kayıtlar yükleniyor...</td></tr>
-                        </tbody>
-                    </table>
+                    <div class="panel-head">
+                        <h3><i class="fas fa-comments" style="color:var(--brand-color);"></i> Sohbet Dökümü</h3>
+                        <div class="panel-head-actions">
+                            <button type="button" class="btn-secondary btn-sm-tab" id="chatTodayBtn" onclick="loadFamilyChatTranscript(true)">Bugün</button>
+                            <button type="button" class="btn-secondary btn-sm-tab" id="chatAllBtn" onclick="loadFamilyChatTranscript(false)">Son mesajlar</button>
+                            <button type="button" class="btn-secondary" onclick="loadFamilyChatTranscript()">
+                                <i class="fas fa-sync-alt"></i> Yenile
+                            </button>
+                        </div>
+                    </div>
+                    <p class="muted">Yaşlının dijital refakatçi ile yaptığı konuşmalar (salt okunur).</p>
+                    <div id="family-chat-transcript" class="chat-transcript">
+                        <p class="muted">Sohbet yükleniyor…</p>
+                    </div>
                 </div>
-            </div>
+            </section>
 
-            <div id="sec-medications" class="dashboard-section" style="display: none;">
+            <!-- İLAÇLAR -->
+            <section id="sec-medications" class="dashboard-section">
                 <div class="panel-section">
-                    <h3 style="color: var(--text-main); font-weight: 600;"><i class="fas fa-pills" style="margin-right: 8px; color: var(--brand-color);"></i> İlaç Tanımlama</h3>
-                    <p style="color: var(--text-muted); margin-bottom: 20px; font-size: 14px;">Yakınınızın ilaçlarını ve hatırlatma saatlerini buradan tanımlayabilirsiniz.</p>
+                    <h3><i class="fas fa-pills" style="color:var(--brand-color);"></i> İlaç Yönetimi</h3>
+                    <p class="muted">Eklediğiniz ilaçlar ve saatler yaşlı kiosk ekranına yansır. Yeni ilaç için butona basın.</p>
                     <div id="familyMedFormRoot"></div>
                     <div id="familyMedListRoot"></div>
                 </div>
-            </div>
+            </section>
 
-            <div id="sec-settings" class="dashboard-section" style="display: none;">
+            <!-- UYARILAR -->
+            <section id="sec-alerts" class="dashboard-section">
                 <div class="panel-section">
-                    <h3 style="color: var(--text-main); font-weight: 600;"><i class="fas fa-sliders-h" style="margin-right: 8px; color: var(--brand-color);"></i> Refakatçi Ayarları</h3>
-                    <p style="color: var(--text-muted); margin-bottom: 20px; font-size: 14px;">Bildirim ve eşleşme ayarlarını buradan yönetebilirsiniz.</p>
-                    <button class="btn btn-primary" style="max-width: 220px; padding: 12px 20px; border-radius: 12px;">SMS Bildirimlerini Aç</button>
+                    <div class="panel-head">
+                        <h3><i class="fas fa-bell" style="color:#F59E0B;"></i> Tüm Uyarılar</h3>
+                        <button type="button" class="btn-secondary" onclick="refreshAlerts()">
+                            <i class="fas fa-sync-alt"></i> Yenile
+                        </button>
+                    </div>
+                    <div id="all-alerts-list" class="alert-list">
+                        <p class="muted">Uyarılar yükleniyor…</p>
+                    </div>
                 </div>
-            </div>
+            </section>
 
+            <!-- GEÇMİŞ -->
+            <section id="sec-history" class="dashboard-section">
+                <div class="panel-section">
+                    <h3><i class="fas fa-calendar-alt" style="color:var(--brand-color);"></i> Geçmiş Loglar ve Olay Durumları</h3>
+                    <p class="muted">Yaşlınızın gün içindeki hareket ve tetiklenme geçmişi:</p>
+                    <div class="table-wrap">
+                        <table class="table-history">
+                            <thead>
+                                <tr>
+                                    <th>Tarih / Saat</th>
+                                    <th>Olay / Kategori</th>
+                                    <th>Durum</th>
+                                    <th>Açıklama</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-table-body">
+                                <tr><td colspan="4">Kayıtlar yükleniyor...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PROFİL -->
+            <section id="sec-profile" class="dashboard-section">
+                <div class="panel-section">
+                    <div class="panel-head">
+                        <h3><i class="fas fa-user" style="color:var(--brand-color);"></i> Yaşlı Profil Bilgileri</h3>
+                        <div class="panel-head-actions" id="familyProfileActions">
+                            <button type="button" class="btn-primary" id="familyProfileEditToggle" onclick="toggleFamilyProfileEdit()">
+                                <i class="fas fa-pen"></i> Düzenle
+                            </button>
+                        </div>
+                    </div>
+                    <div id="family-profile-view" class="family-profile-view"></div>
+                    <p id="fpStatus" class="form-status" role="status"></p>
+                </div>
+            </section>
+
+            <!-- AYARLAR -->
+            <section id="sec-settings" class="dashboard-section">
+                <div class="panel-section">
+                    <h3><i class="fas fa-bell" style="color:var(--brand-color);"></i> Bildirim Tercihleri</h3>
+                    <p class="muted">Hangi uyarıların bu panele gelmesini istediğinizi seçin. Tercihler bu cihazda saklanır.</p>
+
+                    <label class="toggle-row">
+                        <span>
+                            <strong>Acil sağlık uyarıları</strong>
+                            <small>Kritik sohbet / sağlık riski bildirimleri</small>
+                        </span>
+                        <input type="checkbox" id="notifyCritical" data-pref="critical">
+                    </label>
+                    <label class="toggle-row">
+                        <span>
+                            <strong>İlaç kaçırma uyarıları</strong>
+                            <small>Alınmayan veya geciken dozlar</small>
+                        </span>
+                        <input type="checkbox" id="notifyMedMissed" data-pref="medication_missed">
+                    </label>
+                    <label class="toggle-row">
+                        <span>
+                            <strong>Yanlış ilaç uyarıları</strong>
+                            <small>Tanıma ile eşleşmeyen ilaçlar</small>
+                        </span>
+                        <input type="checkbox" id="notifyMedWrong" data-pref="wrong_medication">
+                    </label>
+                    <label class="toggle-row">
+                        <span>
+                            <strong>Check-in eksikliği</strong>
+                            <small>Günlük durum bildirimi yapılmadığında</small>
+                        </span>
+                        <input type="checkbox" id="notifyCheckin" data-pref="checkin_missing">
+                    </label>
+                    <label class="toggle-row">
+                        <span>
+                            <strong>Sesli uyarı</strong>
+                            <small>Kritik olaylarda kısa bip sesi</small>
+                        </span>
+                        <input type="checkbox" id="notifySound" data-pref="sound">
+                    </label>
+                    <label class="toggle-row">
+                        <span>
+                            <strong>Üst banner bildirimi</strong>
+                            <small>Acil uyarıları panel üstünde göster</small>
+                        </span>
+                        <input type="checkbox" id="notifyBanner" data-pref="banner">
+                    </label>
+                    <label class="toggle-row">
+                        <span>
+                            <strong>SMS bildirimleri</strong>
+                            <small>Telefon SMS tercihi (cihazda saklanır)</small>
+                        </span>
+                        <input type="checkbox" id="notifySms" data-pref="sms">
+                    </label>
+
+                    <p id="notifyPrefsStatus" class="form-status" role="status"></p>
+                    <button type="button" class="btn-secondary" style="margin-top:16px;" onclick="handleLogout()">
+                        <i class="fas fa-sign-out-alt"></i> Oturumu Kapat
+                    </button>
+                </div>
+            </section>
         </div>
     </div>
 
-    <script src="config.js"></script>
-    <script src="definitions.js"></script>
-    <script src="dashboard.js"></script>
+    <script src="config.js?v=20260729fd6"></script>
+    <script src="definitions.js?v=20260729fd6"></script>
+    <script src="dashboard.js?v=20260729fd6"></script>
 </body>
 </html>

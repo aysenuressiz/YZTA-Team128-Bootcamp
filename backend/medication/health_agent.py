@@ -66,6 +66,13 @@ def record_manual_taken(
     schedule_id: str | None,
     confirmation_method: str = "button",
 ) -> dict[str, Any]:
+    if medication_service.has_schedule_been_resolved_today(medication_id, schedule_id):
+        return {
+            "decision": "skipped",
+            "message": "Bu doz bugün zaten kaydedilmiş.",
+            "log": None,
+        }
+
     log = medication_service.create_medication_log(
         medication_id=medication_id,
         schedule_id=schedule_id,
@@ -76,14 +83,31 @@ def record_manual_taken(
 
 
 def record_snooze(medication_id: str, schedule_id: str | None) -> dict[str, Any]:
-    """Erteleme — eskalasyon tetiklenmez, yalnızca izleme kaydı."""
+    """Erteleme — 3. ertelemeden sonra missed + aile bildirimi."""
+    prior = medication_service.count_today_snoozes(medication_id, schedule_id)
     log = medication_service.create_medication_log(
         medication_id=medication_id,
         schedule_id=schedule_id,
         status=STATUS_SNOOZED,
         confirmation_method="snooze",
     )
-    return {"decision": STATUS_SNOOZED, "message": "Hatırlatma ertelendi.", "log": log}
+    snooze_count = prior + 1
+    if snooze_count >= 3:
+        missed = record_missed(medication_id, schedule_id, reason="max_snooze")
+        return {
+            "decision": STATUS_MISSED,
+            "message": "3 erteleme sonrası ilaç içilmedi olarak kaydedildi. Aile bilgilendirildi.",
+            "log": missed.get("log") or log,
+            "snooze_count": snooze_count,
+            "max_snoozes": 3,
+        }
+    return {
+        "decision": STATUS_SNOOZED,
+        "message": "Hatırlatma 10 dakika ertelendi.",
+        "log": log,
+        "snooze_count": snooze_count,
+        "max_snoozes": 3,
+    }
 
 
 def record_missed(medication_id: str, schedule_id: str | None, reason: str = "timeout") -> dict[str, Any]:

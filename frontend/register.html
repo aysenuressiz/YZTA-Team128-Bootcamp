@@ -3,69 +3,231 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Yanımda Al - Kayıt Ol</title>
-    <link rel="stylesheet" href="sheet.css">
+    <title>Yanımda Al — Kayıt Ol</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="register.css?v=20260722orig">
 </head>
-<body>
-    <div class="auth-container register-mode">
-        <div class="auth-header">
-            <h1>Aile & Refakatçi Kaydı</h1>
-            <p>Lütfen yaşlı kullanıcı ve aile bilgilerini eksiksiz doldurun</p>
-        </div>
-
-        <form id="register-form" onsubmit="handleRegister(event)">
-            <div class="form-grid">
-                
-                <div class="form-section">
-                    <h3>👵👴 Yaşlı Kullanıcı Bilgileri</h3>
-                    <div class="form-group">
-                        <label for="elderly-name">Adı Soyadı</label>
-                        <input type="text" id="elderly-name" placeholder="Ahmet Yılmaz" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="elderly-age">Yaşı</label>
-                        <input type="number" id="elderly-age" placeholder="75" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Yüz Tanıma Tanımlama</label>
-                        <div class="face-register-box">
-                            <video id="reg-webcam" autoplay playsinline muted style="width: 100%; max-width: 320px; border-radius: 8px; display: none; background: #000; margin-bottom: 10px;"></video>
-        
-                            <button type="button" class="btn btn-neutral" onclick="document.getElementById('reg-webcam').style.display='block'; openRegisterCamera()">📷 Kamerayı Aç</button>
-                            <button type="button" class="btn btn-primary" onclick="captureRegisterFace()">📸 Fotoğrafı Yakala</button>
-        
-                        <span id="reg-camera-status" style="font-size: 14px; color: var(--text-muted); display:block; margin-top:5px;">Kamera henüz tanımlanmadı.</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="form-section">
-                    <h3>👨‍👩‍👧‍👦 Aile / Refakatçi Bilgileri</h3>
-                    <div class="form-group">
-                        <label for="family-name">Adı Soyadı</label>
-                        <input type="text" id="family-name" placeholder="Mehmet Yılmaz (Oğlu)" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="family-phone">Telefon Numarası</label>
-                        <input type="tel" id="family-phone" placeholder="5xx xxx xx xx" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="family-password">Giriş Şifresi</label>
-                        <input type="password" id="family-password" placeholder="En az 6 karakter" required>
-                    </div>
-                </div>
-
-            </div>
-
-            <button type="submit" class="btn btn-success btn-block" style="margin-top: 20px;">Kayıt İşlemini Tamamla</button>
-        </form>
-
-        <div class="auth-footer">
-            Zaten üye misiniz? <a href="login.html">Giriş Yap</a>
-        </div>
+<body class="register-page">
+    <div class="ambient" aria-hidden="true">
+        <span class="orb orb-a"></span>
+        <span class="orb orb-b"></span>
     </div>
 
+    <div class="reg-shell">
+        <header class="reg-top">
+            <a class="reg-back" href="onboarding.html" aria-label="Geri — Ana sayfa">← Geri</a>
+            <div class="reg-brand-center">
+                <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                    <circle cx="32" cy="6" r="3" fill="#2563eb"/>
+                    <path d="M32 9 V16" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round"/>
+                    <rect x="14" y="16" width="36" height="28" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="2.2"/>
+                    <rect x="40" y="20" width="7" height="7" rx="1.5" fill="#0f766e"/>
+                    <path d="M43.5 21.5 V25.5 M41.5 23.5 H45.5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>
+                    <circle cx="24" cy="29" r="3.2" fill="#1d4ed8"/>
+                    <circle cx="40" cy="29" r="3.2" fill="#1d4ed8"/>
+                    <path d="M25 35c2.2 2.4 11.8 2.4 14 0" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <span>Yanımda Al</span>
+            </div>
+            <span class="reg-top-spacer" aria-hidden="true"></span>
+        </header>
+
+        <section class="reg-hero">
+            <h1>Yaşlı &amp; aile kaydı</h1>
+            <p>Yaşlı kullanıcı ve aile / refakatçi bilgilerini birlikte oluşturun. Yüz kaydı isteğe bağlıdır.</p>
+        </section>
+
+        <form id="register-form" class="reg-form" novalidate>
+            <div class="reg-duo">
+                <section class="reg-card">
+                    <div class="card-emoji" aria-hidden="true"><span class="emoji-bounce">🧓</span></div>
+                    <h2>Yaşlı kullanıcı bilgileri</h2>
+                    <p class="hint">Sohbet ve ilaç takibi bu profil üzerinden yürür.</p>
+                    <div class="reg-grid two">
+                        <div class="field">
+                            <label for="elderly-first-name">Ad</label>
+                            <input id="elderly-first-name" type="text" placeholder="Ahmet" required autocomplete="given-name">
+                        </div>
+                        <div class="field">
+                            <label for="elderly-last-name">Soyad</label>
+                            <input id="elderly-last-name" type="text" placeholder="Yılmaz" required autocomplete="family-name">
+                        </div>
+                        <div class="field field-birth">
+                            <label>Doğum tarihi</label>
+                            <div class="birth-row">
+                                <select id="elderly-birth-day" required aria-label="Gün">
+                                    <option value="">Gün</option>
+                                </select>
+                                <select id="elderly-birth-month" required aria-label="Ay">
+                                    <option value="">Ay</option>
+                                    <option value="01">Ocak</option>
+                                    <option value="02">Şubat</option>
+                                    <option value="03">Mart</option>
+                                    <option value="04">Nisan</option>
+                                    <option value="05">Mayıs</option>
+                                    <option value="06">Haziran</option>
+                                    <option value="07">Temmuz</option>
+                                    <option value="08">Ağustos</option>
+                                    <option value="09">Eylül</option>
+                                    <option value="10">Ekim</option>
+                                    <option value="11">Kasım</option>
+                                    <option value="12">Aralık</option>
+                                </select>
+                                <select id="elderly-birth-year" required aria-label="Yıl">
+                                    <option value="">Yıl</option>
+                                </select>
+                            </div>
+                            <input type="hidden" id="elderly-birth-date">
+                        </div>
+                        <div class="field field-age">
+                            <label for="elderly-age">Yaş</label>
+                            <input id="elderly-age" type="number" min="1" max="120" placeholder="Otomatik" required>
+                        </div>
+                        <div class="field">
+                            <label for="elderly-phone">Telefon numarası</label>
+                            <input id="elderly-phone" type="tel" inputmode="numeric" placeholder="5xx xxx xx xx" autocomplete="tel" maxlength="13">
+                        </div>
+                        <div class="field">
+                            <label for="elderly-email">E-posta</label>
+                            <input id="elderly-email" type="email" placeholder="ornek@mail.com" autocomplete="email">
+                        </div>
+                        <div class="field">
+                            <label for="elderly-password">Şifre</label>
+                            <input id="elderly-password" type="password" placeholder="En az 6 karakter" minlength="6" required autocomplete="new-password">
+                        </div>
+                        <div class="field">
+                            <label for="elderly-password-confirm">Şifre (tekrar)</label>
+                            <input id="elderly-password-confirm" type="password" placeholder="Şifreyi doğrulayın" minlength="6" required autocomplete="new-password">
+                            <p id="elderly-password-hint" class="field-hint" hidden></p>
+                        </div>
+                    </div>
+                    <p class="contact-hint">Telefon veya e-posta alanlarından en az birini doldurun.</p>
+                </section>
+
+                <section class="reg-card">
+                    <div class="card-emoji" aria-hidden="true"><span class="emoji-bounce delay">👨‍👩‍👧</span></div>
+                    <h2>Aile / refakatçi bilgileri</h2>
+                    <p class="hint">Uyarılar ve aile paneli girişi bu hesapla yapılır.</p>
+                    <div class="reg-grid two">
+                        <div class="field">
+                            <label for="family-first-name">Ad</label>
+                            <input id="family-first-name" type="text" placeholder="Mehmet" required>
+                        </div>
+                        <div class="field">
+                            <label for="family-last-name">Soyad</label>
+                            <input id="family-last-name" type="text" placeholder="Yılmaz" required>
+                        </div>
+                        <div class="field">
+                            <label for="family-relationship">Yaşlıya yakınlık</label>
+                            <select id="family-relationship" required>
+                                <option value="">Seçiniz</option>
+                                <option value="cocuk">Çocuk</option>
+                                <option value="torun">Torun</option>
+                                <option value="es">Eş</option>
+                                <option value="kardes">Kardeş</option>
+                                <option value="bakici">Bakıcı / refakatçi</option>
+                                <option value="diger">Diğer</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Doğum tarihi</label>
+                            <div class="birth-row">
+                                <select id="family-birth-day" required aria-label="Gün">
+                                    <option value="">Gün</option>
+                                </select>
+                                <select id="family-birth-month" required aria-label="Ay">
+                                    <option value="">Ay</option>
+                                    <option value="01">Ocak</option>
+                                    <option value="02">Şubat</option>
+                                    <option value="03">Mart</option>
+                                    <option value="04">Nisan</option>
+                                    <option value="05">Mayıs</option>
+                                    <option value="06">Haziran</option>
+                                    <option value="07">Temmuz</option>
+                                    <option value="08">Ağustos</option>
+                                    <option value="09">Eylül</option>
+                                    <option value="10">Ekim</option>
+                                    <option value="11">Kasım</option>
+                                    <option value="12">Aralık</option>
+                                </select>
+                                <select id="family-birth-year" required aria-label="Yıl">
+                                    <option value="">Yıl</option>
+                                </select>
+                            </div>
+                            <input type="hidden" id="family-birth-date">
+                        </div>
+                        <div class="field">
+                            <label for="family-phone">Telefon numarası</label>
+                            <input id="family-phone" type="tel" inputmode="numeric" placeholder="5xx xxx xx xx" maxlength="13">
+                        </div>
+                        <div class="field">
+                            <label for="family-email">E-posta</label>
+                            <input id="family-email" type="email" placeholder="ornek@mail.com" autocomplete="email">
+                        </div>
+                        <div class="field">
+                            <label for="family-password">Şifre</label>
+                            <input id="family-password" type="password" placeholder="En az 6 karakter" minlength="6" required autocomplete="new-password">
+                        </div>
+                        <div class="field">
+                            <label for="family-password-confirm">Şifre (tekrar)</label>
+                            <input id="family-password-confirm" type="password" placeholder="Şifreyi doğrulayın" minlength="6" required autocomplete="new-password">
+                            <p id="family-password-hint" class="field-hint" hidden></p>
+                        </div>
+                    </div>
+                    <p class="contact-hint">Telefon veya e-posta alanlarından en az birini doldurun.</p>
+                </section>
+            </div>
+
+            <section class="reg-card face-card">
+                <h2>Yüz tanıma <span class="sub">(opsiyonel)</span></h2>
+                <p class="hint">Hızlı giriş için yüz kaydı yapın. Ön → sağ → sol olmak üzere 3 açı kaydedilir.</p>
+
+                <div class="face-toggle">
+                    <input type="checkbox" id="face-enable" onchange="toggleFaceEnrollment(this.checked)">
+                    <label for="face-enable">Hızlı giriş için yüz kaydı yapmak istiyorum</label>
+                </div>
+
+                <div id="face-panel" class="face-panel">
+                    <div class="angle-steps" aria-label="Açı adımları">
+                        <span id="step-front" class="active">1 · Ön</span>
+                        <span id="step-right">2 · Sağ</span>
+                        <span id="step-left">3 · Sol</span>
+                    </div>
+
+                    <p id="cam-prompt" class="cam-prompt">Kamerayı açarak başlayın.</p>
+
+                    <div class="cam-stage">
+                        <video id="reg-webcam" autoplay playsinline muted></video>
+                        <img id="reg-preview" class="preview" alt="Çekilen kare">
+                        <div id="face-guide" class="face-guide is-bad" hidden></div>
+                    </div>
+
+                    <div id="reg-thumbs" class="thumbs"></div>
+
+                    <div class="face-actions">
+                        <button type="button" id="reg-cam-open-btn" class="btn btn-ghost" onclick="openRegisterCamera()">Kamerayı aç</button>
+                        <button type="button" id="reg-cam-capture-btn" class="btn btn-primary" onclick="captureRegisterFace()" disabled style="display:none;">Fotoğrafı yakala</button>
+                        <button type="button" id="reg-cam-continue-btn" class="btn btn-success" onclick="finishFaceEnrollment()" style="display:none;">Devam</button>
+                        <button type="button" id="reg-cam-skip-btn" class="btn btn-ghost" onclick="skipFaceEnrollment()">Yüzü atla</button>
+                    </div>
+                    <p id="reg-camera-status" class="reg-status"></p>
+                </div>
+            </section>
+
+            <button type="button" id="register-submit-btn" class="btn btn-success reg-submit">Kayıt Ol</button>
+            <p id="register-form-status" class="reg-status" role="alert" aria-live="assertive"></p>
+        </form>
+
+        <p class="reg-footer">
+            Hesabınız var mı? <a href="login.html">Giriş yap</a>
+        </p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/dist/face-api.js"></script>
     <script src="config.js"></script>
-    <script src="authorization.js"></script>
+    <script src="authorization.js?v=20260722r1"></script>
+    <script src="register-face.js?v=20260722orig"></script>
 </body>
 </html>

@@ -1,5 +1,20 @@
 /* İlaç tanımlama modülü */
 
+.med-def-add-wrap {
+    margin-bottom: 16px;
+}
+
+.med-def-add-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: auto;
+    min-width: 200px;
+    padding: 12px 18px;
+    font-size: 16px;
+    font-weight: 700;
+}
+
 .med-def-panel {
     background: #F8FAFC;
     border: 2px dashed #CBD5E1;
@@ -95,9 +110,25 @@
     align-items: flex-start;
 }
 
+.med-def-card-main { min-width: 0; flex: 1; }
+
 .med-def-card-title {
     font-size: 22px;
     font-weight: 700;
+}
+
+.med-def-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.med-edit-btn {
+    width: auto !important;
+    min-height: 40px !important;
+    padding: 8px 12px !important;
+    font-size: 0.95rem !important;
 }
 
 .med-def-meta {
@@ -117,12 +148,115 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     padding: 10px 12px;
     background: #EFF6FF;
     border-radius: 12px;
     font-size: 16px;
 }
+
+.med-def-schedule-left {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.med-def-schedule-left strong { font-size: 1.05rem; }
+.med-def-schedule-left span,
+.med-def-schedule-left em {
+    font-style: normal;
+    font-size: 0.9rem;
+    color: #64748B;
+    font-weight: 650;
+}
+
+.med-def-schedule-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.med-def-verify-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.med-mini-btn {
+    width: auto !important;
+    min-height: 40px !important;
+    padding: 8px 12px !important;
+    font-size: 0.92rem !important;
+}
+
+.med-def-snooze-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 700;
+    background: #FEF3C7;
+    color: #92400E;
+}
+
+.med-switch {
+    position: relative;
+    display: inline-flex;
+    cursor: pointer;
+    user-select: none;
+}
+.med-switch input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.med-switch-track {
+    width: 72px;
+    height: 34px;
+    border-radius: 999px;
+    background: #cbd5e1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px;
+    transition: background 0.2s ease;
+    box-shadow: inset 0 0 0 1px rgba(15,23,42,0.08);
+}
+.med-switch-track::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(15,23,42,0.2);
+    transition: transform 0.2s ease;
+}
+.med-switch-track i {
+    font-style: normal;
+    font-size: 0.68rem;
+    font-weight: 800;
+    z-index: 1;
+    opacity: 0.55;
+}
+.med-switch-track .on { color: #fff; }
+.med-switch-track .off { color: #334155; }
+.med-switch input:checked + .med-switch-track {
+    background: #16a34a;
+}
+.med-switch input:checked + .med-switch-track::after {
+    transform: translateX(38px);
+}
+.med-switch input:checked + .med-switch-track .on { opacity: 1; }
+.med-switch input:not(:checked) + .med-switch-track .off { opacity: 1; }
 
 .med-def-danger {
     background: #FEF2F2;
@@ -160,8 +294,46 @@
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
 }
 
+.med-def-card-done {
+    opacity: 0.85;
+    border-color: #A7F3D0;
+    background: #F0FDF4;
+}
+
+.med-def-done-chip,
+.med-def-missed-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.med-def-done-chip {
+    background: #D1FAE5;
+    color: #047857;
+}
+
+.med-def-missed-chip {
+    background: #FEE2E2;
+    color: #B91C1C;
+}
+
+.med-def-card-inactive {
+    opacity: 0.72;
+    border-style: dashed;
+}
+
 @media (max-width: 768px) {
     .med-def-grid {
         grid-template-columns: 1fr;
+    }
+    .med-def-schedule-item {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .med-def-schedule-right {
+        justify-content: flex-start;
     }
 }

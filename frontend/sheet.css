@@ -229,10 +229,101 @@ body {
 
 .face-register-box {
     text-align: center;
-    padding: 10px;
+    padding: 12px;
     background: #FFFFFF;
     border: 2px dashed var(--border-color);
     border-radius: 12px;
+}
+
+.face-register-box .reg-status {
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.35;
+    color: var(--brand-color);
+    margin: 0 0 12px;
+    min-height: 2.6em;
+}
+
+.face-register-box .reg-angle-row {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.face-register-box .reg-angle-btn {
+    flex: 1 1 90px;
+    min-height: 52px;
+    padding: 10px 8px;
+    font-size: 16px;
+    font-weight: 700;
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    background: #f3f4f6;
+    color: #111;
+    cursor: pointer;
+}
+
+.face-register-box .reg-angle-btn.active {
+    background: var(--brand-color);
+    border-color: var(--brand-color);
+    color: #fff;
+}
+
+.face-register-box .reg-angle-btn.done {
+    background: #d1fae5;
+    border-color: #10b981;
+    color: #065f46;
+}
+
+.face-register-box .reg-media-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.face-register-box .reg-media {
+    width: 120px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: 8px;
+    background: #111;
+    display: block;
+}
+
+.face-register-box .reg-thumbs {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.face-register-box .reg-thumbs img {
+    width: 48px;
+    height: 36px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 2px solid var(--brand-color);
+    background: #111;
+}
+
+.face-register-box .reg-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.face-register-box .reg-big-btn {
+    min-height: 48px;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 10px 16px;
 }
 
 .auth-footer {
