@@ -4,9 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Yanımda Al - Refakatçi Paneli</title>
+    <script>
+        (function () {
+            var userId = localStorage.getItem("user_id") || localStorage.getItem("family_id");
+            var role = localStorage.getItem("user_role");
+            if (!userId) {
+                window.location.replace("login.html");
+                return;
+            }
+            if (role && role !== "family") {
+                window.location.replace("app.html");
+                return;
+            }
+            document.documentElement.classList.add("session-ok");
+        })();
+    </script>
+    <style>html:not(.session-ok) body { visibility: hidden; }</style>
     <link rel="stylesheet" href="sheet.css">
-    <link rel="stylesheet" href="family-dashboard.css?v=20260729fd6">
-    <link rel="stylesheet" href="definitions.css?v=20260729fd6">
+    <link rel="stylesheet" href="family-dashboard.css?v=20260801ux1">
+    <link rel="stylesheet" href="definitions.css?v=20260801ux1">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body class="family-dash">
@@ -18,22 +34,21 @@
                     <button type="button" class="sidebar-toggle" id="navToggleBtn" onclick="toggleSideNav()" title="Menüyü daralt" aria-label="Menüyü daralt/genişlet" aria-expanded="true">
                         <i class="fas fa-bars"></i>
                     </button>
-                </div>
-
-                <div class="sidebar-brand">
-                    <svg class="brand-logo" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-                        <circle cx="32" cy="6" r="3" fill="#3B82F6"/>
-                        <path d="M32 9 V16" stroke="#3B82F6" stroke-width="2.2" stroke-linecap="round"/>
-                        <rect x="14" y="16" width="36" height="28" rx="10" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2.2"/>
-                        <rect x="40" y="20" width="7" height="7" rx="1.5" fill="#0F766E"/>
-                        <path d="M43.5 21.5 V25.5 M41.5 23.5 H45.5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>
-                        <circle cx="24" cy="29" r="3.2" fill="#1D4ED8"/>
-                        <circle cx="40" cy="29" r="3.2" fill="#1D4ED8"/>
-                        <path d="M25 35c2.2 2.4 11.8 2.4 14 0" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
-                    <div class="brand-text">
-                        <h2>Yanımda Al</h2>
-                        <span>Refakatçi Paneli</span>
+                    <div class="sidebar-brand">
+                        <svg class="brand-logo" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                            <circle cx="32" cy="6" r="3" fill="#3B82F6"/>
+                            <path d="M32 9 V16" stroke="#3B82F6" stroke-width="2.2" stroke-linecap="round"/>
+                            <rect x="14" y="16" width="36" height="28" rx="10" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2.2"/>
+                            <rect x="40" y="20" width="7" height="7" rx="1.5" fill="#0F766E"/>
+                            <path d="M43.5 21.5 V25.5 M41.5 23.5 H45.5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>
+                            <circle cx="24" cy="29" r="3.2" fill="#1D4ED8"/>
+                            <circle cx="40" cy="29" r="3.2" fill="#1D4ED8"/>
+                            <path d="M25 35c2.2 2.4 11.8 2.4 14 0" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        <div class="brand-text">
+                            <h2>Yanımda Al</h2>
+                            <span>Refakatçi Paneli</span>
+                        </div>
                     </div>
                 </div>
 
@@ -44,6 +59,12 @@
                     <li class="active" data-tab="summary" onclick="switchDashboardTab('summary')">
                         <i class="fas fa-chart-pie"></i><em>Mevcut Durum</em>
                     </li>
+                    <li data-tab="weekly" onclick="switchDashboardTab('weekly')">
+                        <i class="fas fa-calendar-week"></i><em>Haftalık Özet</em>
+                    </li>
+                    <li data-tab="mood" onclick="switchDashboardTab('mood')">
+                        <i class="fas fa-smile"></i><em>Ruh Hali</em>
+                    </li>
                     <li data-tab="checkin" onclick="switchDashboardTab('checkin')">
                         <i class="fas fa-sun"></i><em>Check-in</em>
                     </li>
@@ -52,6 +73,9 @@
                     </li>
                     <li data-tab="medications" onclick="switchDashboardTab('medications')">
                         <i class="fas fa-pills"></i><em>İlaç Yönetimi</em>
+                    </li>
+                    <li data-tab="adherence" onclick="switchDashboardTab('adherence')">
+                        <i class="fas fa-chart-bar"></i><em>İlaç Uyumu</em>
                     </li>
                     <li data-tab="alerts" onclick="switchDashboardTab('alerts')">
                         <i class="fas fa-bell"></i><em>Uyarılar</em>
@@ -108,8 +132,19 @@
                 </div>
             </div>
 
-            <!-- ÖZET -->
+            <!-- ÖZET / GENEL DURUM -->
             <section id="sec-summary" class="dashboard-section active">
+                <div class="status-hero panel-section">
+                    <div class="status-hero-top">
+                        <div>
+                            <p class="eyebrow">Genel durum</p>
+                            <h2 id="status-hero-title">Yükleniyor…</h2>
+                            <p class="muted" id="status-hero-line">Özet hazırlanıyor</p>
+                        </div>
+                        <div class="status-hero-mood" id="status-hero-mood">—</div>
+                    </div>
+                </div>
+
                 <div class="grid-stats">
                     <div class="stat-card">
                         <div class="stat-icon" style="color: #EF4444;"><i class="fas fa-heartbeat"></i></div>
@@ -137,6 +172,7 @@
                         <div class="stat-info">
                             <p>Günlük Aktivite</p>
                             <h3 id="activity-status">—</h3>
+                            <small class="stat-hint" id="activity-hint">Kiosk etkileşimi</small>
                         </div>
                     </div>
                 </div>
@@ -152,9 +188,87 @@
                         <div id="weekly-trend-chart" class="trend-chart"></div>
                     </div>
                     <div class="panel-section">
-                        <h3><i class="fas fa-robot" style="color:#F59E0B;"></i> Yapay Zeka Günlük Özeti</h3>
+                        <h3><i class="fas fa-robot" style="color:#F59E0B;"></i> Yapay Zeka Haftalık Özeti</h3>
                         <p class="ai-summary" id="ai-summary">Özet yükleniyor…</p>
                     </div>
+                </div>
+            </section>
+
+            <!-- HAFTALIK ÖZET -->
+            <section id="sec-weekly" class="dashboard-section">
+                <div class="panel-section">
+                    <div class="panel-head">
+                        <h3><i class="fas fa-calendar-week" style="color:var(--brand-color);"></i> Son 7 Gün — Birleşik Özet</h3>
+                        <button type="button" class="btn-secondary" onclick="loadWeeklySummary()">
+                            <i class="fas fa-sync-alt"></i> Yenile
+                        </button>
+                    </div>
+                    <p class="muted">Ruh hali, ilaç uyumu, uyarılar ve aktivite tek bakışta.</p>
+                    <ul class="weekly-bullets" id="weekly-bullets">
+                        <li class="muted">Özet yükleniyor…</li>
+                    </ul>
+                </div>
+                <div class="grid-stats" id="weekly-stat-cards">
+                    <div class="stat-card">
+                        <div class="stat-info"><p>Ruh hali ort.</p><h3 id="weekly-mood-avg">—</h3></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-info"><p>İlaç uyumu</p><h3 id="weekly-med-rate">—</h3></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-info"><p>Uyarı (7g)</p><h3 id="weekly-alert-count">—</h3></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-info"><p>Sohbet tonu</p><h3 id="weekly-chat-tone">—</h3></div>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <h3><i class="fas fa-chart-bar" style="color:var(--brand-color);"></i> 7 Günlük Ruh Hali</h3>
+                    <div id="weekly-mood-chart" class="mood-day-chart"></div>
+                </div>
+            </section>
+
+            <!-- RUH HALİ ANALİZİ -->
+            <section id="sec-mood" class="dashboard-section">
+                <div class="panel-section">
+                    <div class="panel-head">
+                        <h3><i class="fas fa-smile" style="color:var(--brand-color);"></i> Ruh Hali Analizi</h3>
+                        <button type="button" class="btn-secondary" onclick="loadMoodAnalysis()">
+                            <i class="fas fa-sync-alt"></i> Yenile
+                        </button>
+                    </div>
+                    <p class="insight-banner" id="mood-insight">Analiz yükleniyor…</p>
+                    <div id="mood-decline-banner" class="decline-banner" hidden>
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span id="mood-decline-text"></span>
+                    </div>
+                </div>
+                <div class="panel-row">
+                    <div class="panel-section">
+                        <h3>Check-in serisi (7 gün)</h3>
+                        <div id="mood-checkin-chart" class="mood-day-chart"></div>
+                    </div>
+                    <div class="panel-section">
+                        <h3>Sohbet duygu skoru</h3>
+                        <div class="sentiment-meter">
+                            <div class="sentiment-track">
+                                <div class="sentiment-fill" id="sentiment-fill"></div>
+                            </div>
+                            <p id="sentiment-label" class="muted">—</p>
+                        </div>
+                        <div id="mood-highlights" class="mood-highlights">
+                            <p class="muted">Olumsuz / riskli mesaj örnekleri burada görünür.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <h3>Normalize etiketler</h3>
+                    <div class="mood-legend">
+                        <span class="mood-pill tone-good">Harika / İyi</span>
+                        <span class="mood-pill tone-neutral">Normal</span>
+                        <span class="mood-pill tone-bad">Halsiz / Kötü</span>
+                    </div>
+                    <p class="muted" id="mood-latest-meta">Son check-in etiketi yükleniyor…</p>
                 </div>
             </section>
 
@@ -192,7 +306,10 @@
                             </button>
                         </div>
                     </div>
-                    <p class="muted">Yaşlının dijital refakatçi ile yaptığı konuşmalar (salt okunur).</p>
+                    <p class="muted">Yaşlının dijital refakatçi ile yaptığı konuşmalar (salt okunur). Riskli mesajlar kırmızı çerçeveyle işaretlenir.</p>
+                    <div class="risk-history-strip" id="risk-history-strip">
+                        <span class="muted">Risk geçmişi yükleniyor…</span>
+                    </div>
                     <div id="family-chat-transcript" class="chat-transcript">
                         <p class="muted">Sohbet yükleniyor…</p>
                     </div>
@@ -209,15 +326,49 @@
                 </div>
             </section>
 
+            <!-- İLAÇ UYUMU -->
+            <section id="sec-adherence" class="dashboard-section">
+                <div class="panel-section">
+                    <div class="panel-head">
+                        <h3><i class="fas fa-chart-bar" style="color:var(--brand-color);"></i> İlaç Uyumu</h3>
+                        <div class="panel-head-actions chart-tabs" id="adherenceRangeTabs">
+                            <button type="button" class="chart-tab active" data-days="7" onclick="setAdherenceDays(7)">7 gün</button>
+                            <button type="button" class="chart-tab" data-days="30" onclick="setAdherenceDays(30)">30 gün</button>
+                            <button type="button" class="btn-secondary" onclick="loadAdherencePanel()">
+                                <i class="fas fa-sync-alt"></i> Yenile
+                            </button>
+                        </div>
+                    </div>
+                    <p class="muted">Hedef uyum: <strong>%80</strong>. Alınan / kaçırılan / ertelenen dozlar ilaç bazında.</p>
+                    <div class="grid-stats" style="margin-top:12px;">
+                        <div class="stat-card"><div class="stat-info"><p>Genel uyum</p><h3 id="adh-overall">—</h3></div></div>
+                        <div class="stat-card"><div class="stat-info"><p>Alınan</p><h3 id="adh-taken">—</h3></div></div>
+                        <div class="stat-card"><div class="stat-info"><p>Kaçırılan</p><h3 id="adh-missed">—</h3></div></div>
+                        <div class="stat-card"><div class="stat-info"><p>Ertelenen</p><h3 id="adh-snoozed">—</h3></div></div>
+                    </div>
+                    <div id="adh-target-banner" class="insight-banner" style="margin-top:14px;">Hedef değerlendiriliyor…</div>
+                    <div id="adh-med-list" class="adh-med-list" style="margin-top:16px;">
+                        <p class="muted">İlaç uyumu yükleniyor…</p>
+                    </div>
+                    <h4 style="margin-top:20px;">Dönem trendi</h4>
+                    <div id="adh-trend-chart" class="trend-chart"></div>
+                </div>
+            </section>
+
             <!-- UYARILAR -->
             <section id="sec-alerts" class="dashboard-section">
                 <div class="panel-section">
                     <div class="panel-head">
-                        <h3><i class="fas fa-bell" style="color:#F59E0B;"></i> Tüm Uyarılar</h3>
-                        <button type="button" class="btn-secondary" onclick="refreshAlerts()">
-                            <i class="fas fa-sync-alt"></i> Yenile
-                        </button>
+                        <h3><i class="fas fa-bell" style="color:#F59E0B;"></i> Uyarılar</h3>
+                        <div class="panel-head-actions chart-tabs">
+                            <button type="button" class="chart-tab active" id="alertFilterOpen" onclick="setAlertFilter('open')">Açık</button>
+                            <button type="button" class="chart-tab" id="alertFilterAll" onclick="setAlertFilter('all')">Tümü</button>
+                            <button type="button" class="btn-secondary" onclick="refreshAlerts()">
+                                <i class="fas fa-sync-alt"></i> Yenile
+                            </button>
+                        </div>
                     </div>
+                    <p class="muted" id="alert-open-hint">Açık uyarı sayısı: —</p>
                     <div id="all-alerts-list" class="alert-list">
                         <p class="muted">Uyarılar yükleniyor…</p>
                     </div>
@@ -314,22 +465,24 @@
                     <label class="toggle-row">
                         <span>
                             <strong>SMS bildirimleri</strong>
-                            <small>Telefon SMS tercihi (cihazda saklanır)</small>
+                            <small>Kritik olaylarda kayıtlı aile telefonuna SMS</small>
                         </span>
-                        <input type="checkbox" id="notifySms" data-pref="sms">
+                        <input type="checkbox" id="notifySms" data-pref="sms" checked>
                     </label>
 
                     <p id="notifyPrefsStatus" class="form-status" role="status"></p>
-                    <button type="button" class="btn-secondary" style="margin-top:16px;" onclick="handleLogout()">
-                        <i class="fas fa-sign-out-alt"></i> Oturumu Kapat
-                    </button>
+                    <div class="panel-head-actions" style="margin-top:18px;">
+                        <button type="button" class="btn-secondary" onclick="handleLogout()">
+                            <i class="fas fa-sign-out-alt"></i> Oturumu Kapat
+                        </button>
+                    </div>
                 </div>
             </section>
         </div>
     </div>
 
-    <script src="config.js?v=20260729fd6"></script>
-    <script src="definitions.js?v=20260729fd6"></script>
-    <script src="dashboard.js?v=20260729fd6"></script>
+    <script src="config.js?v=20260801ux1"></script>
+    <script src="definitions.js?v=20260801ux1"></script>
+    <script src="dashboard.js?v=20260801ux1"></script>
 </body>
 </html>

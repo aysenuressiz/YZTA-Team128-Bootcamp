@@ -7,6 +7,8 @@ ROUTER_SYSTEM = (
     "- Genel sohbet, hal hatır, yalnızlık (acil değilse) → companion\n"
     "- İlaç, doz, semptom, ağrı, check-in, sağlık durumu → health\n"
     "- Düşme, kalkamama, acil yardım, nefes darlığı, bayılma, panik tehlike → escalation\n"
+    "- Ölmek istemek, intihar, kendine zarar, yaşamamak istemek → escalation (urgency=high)\n"
+    "- Film/dizi/haber bağlamında tehlike anlatımı → companion (escalation değil)\n"
     "- Tıbbi teşhis veya tedavi önerme; sadece sınıflandır."
 )
 

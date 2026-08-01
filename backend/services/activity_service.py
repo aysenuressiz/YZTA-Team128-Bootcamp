@@ -169,18 +169,20 @@ def _proxy_signals(user_id: str | None, elder_id: str | None) -> dict[str, int]:
 
 
 def score_to_label(score: int) -> str:
+    """Kiosk etkileşim yoğunluğu — fiziksel hareket / ruh hali değil."""
     if score <= 0:
-        return "Bugün aktivite yok"
+        return "Bugün kiosk etkileşimi yok"
     if score < 4:
-        return "Az aktif"
+        return "Az etkileşim"
     if score < 10:
-        return "Aktif"
-    return "Çok aktif"
+        return "Orta etkileşim"
+    return "Yoğun etkileşim"
 
 
 def get_activity_summary(
     user_id: str | None = None,
     elder_id: str | None = None,
+    light: bool = False,
 ) -> dict[str, Any]:
     events = _count_events_today(user_id, elder_id)
     by_type: dict[str, int] = {}
@@ -190,8 +192,8 @@ def get_activity_summary(
 
     score = sum(WEIGHTS.get(t, 1) * n for t, n in by_type.items())
 
-    # Olay tablosu boşsa mevcut kayıtlardan tahmin
-    if score == 0:
+    # Ağır proxy sorguları — aile paneli özetinde atla (light=True)
+    if score == 0 and not light:
         proxies = _proxy_signals(user_id, elder_id)
         score = (
             proxies["chat"] * WEIGHTS["chat"]

@@ -9,6 +9,7 @@
     let analyser = null;
     let meterRaf = 0;
     let baseSwitchPage = null;
+    let peakLevel = 0;
 
     function apiBase() {
         return (
@@ -30,21 +31,24 @@
     }
     window.speakTurkish = speakTurkish;
 
-    function setVoiceUi(recording) {
+    function setVoiceUi(recording, statusText) {
         const bars = document.getElementById("voiceBars");
         const hint = document.getElementById("voiceHint");
         const btnText = document.getElementById("btnText");
         if (bars) {
-            bars.classList.toggle("is-on", recording);
-            bars.classList.toggle("is-live", recording);
+            bars.classList.toggle("is-on", Boolean(recording));
+            bars.classList.toggle("is-live", Boolean(recording));
         }
         if (hint) {
-            hint.textContent = recording
-                ? "Dinliyorum… Bitince aynı butona tekrar basın."
-                : "Konuşurken basılı tutmayın — başlatmak için basın, bitince tekrar basın.";
+            hint.textContent = statusText
+                || (recording
+                    ? "Dinliyorum… Bitince aynı butona tekrar basın."
+                    : "Başlatmak için basın, konuşun, bitince tekrar basın.");
         }
         if (btnText) {
-            btnText.textContent = recording ? "Dinliyorum — Bitirmek için basın" : "Konuşmak İçin Basın";
+            btnText.textContent = recording
+                ? "Dinliyorum — Bitirmek için basın"
+                : "Konuşmak İçin Basın";
         }
     }
 
@@ -61,10 +65,19 @@
     function startMeter(mediaStream) {
         stopMeter();
         try {
+            // ÖNEMLİ: ölçer için stream klonu — MediaRecorder ile aynı track paylaşmak
+            // bazı tarayıcılarda sessiz/boş kayıt üretir.
+            const meterStream = mediaStream.clone
+                ? mediaStream.clone()
+                : mediaStream;
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const source = audioCtx.createMediaStreamSource(mediaStream);
+            if (audioCtx.state === "suspended") {
+                audioCtx.resume().catch(() => {});
+            }
+            const source = audioCtx.createMediaStreamSource(meterStream);
             analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 64;
+            analyser.fftSize = 256;
+            analyser.smoothingTimeConstant = 0.7;
             source.connect(analyser);
             const data = new Uint8Array(analyser.frequencyBinCount);
             const bars = document.querySelectorAll("#voiceBars i");
@@ -72,17 +85,39 @@
             const tick = () => {
                 if (!analyser) return;
                 analyser.getByteFrequencyData(data);
+                let sum = 0;
+                let max = 0;
+                for (let i = 0; i < data.length; i += 1) {
+                    sum += data[i];
+                    if (data[i] > max) max = data[i];
+                }
+                const avg = sum / Math.max(data.length, 1);
+                if (max > peakLevel) peakLevel = max;
                 bars.forEach((el, i) => {
-                    const v = data[i + 2] || data[i] || 0;
-                    const h = 8 + Math.round((v / 255) * 30);
+                    const v = data[i * 2] || data[i] || avg;
+                    const h = 8 + Math.round((v / 255) * 34);
                     el.style.height = `${h}px`;
                 });
                 meterRaf = requestAnimationFrame(tick);
             };
             tick();
+
+            // klon track'lerini meter kapanınca durdur
+            meterStream._yanimdaMeter = true;
+            window._voiceMeterStream = meterStream;
         } catch (err) {
             console.warn("Ses ölçer açılamadı:", err);
         }
+    }
+
+    function stopMeterTracks() {
+        const meterStream = window._voiceMeterStream;
+        if (meterStream && meterStream.getTracks) {
+            meterStream.getTracks().forEach((t) => {
+                try { t.stop(); } catch (_) { /* ignore */ }
+            });
+        }
+        window._voiceMeterStream = null;
     }
 
     function enhancedAppendMessage(text, sender, options = {}) {
@@ -118,139 +153,487 @@
     }
 
     let voiceStartedAt = 0;
+    let voiceChunks = [];
+    let voiceMime = "audio/webm";
+    let voicePath = null; // "speech" | "whisper"
+    let speechRec = null;
+    let speechFinal = "";
+    let speechFinishing = false;
+
+    function pickRecorderMime() {
+        const candidates = [
+            "audio/webm;codecs=opus",
+            "audio/webm",
+            "audio/mp4",
+            "audio/ogg;codecs=opus",
+        ];
+        for (const type of candidates) {
+            if (window.MediaRecorder && MediaRecorder.isTypeSupported(type)) {
+                return type;
+            }
+        }
+        return "";
+    }
 
     function isBadTranscription(text) {
         const t = String(text || "").trim();
-        if (!t || t.length < 2) return true;
-        const low = t.toLocaleLowerCase("tr-TR");
-        const junk = [
-            "altyazı",
+        if (!t) return true;
+        const low = t
+            .toLocaleLowerCase("tr-TR")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "");
+        const junkExact = new Set([
             "altyazi",
             "m.k.",
             "mk.",
             "subtitle",
+            "subtitles",
             "thank you",
             "thanks for watching",
-            "abone",
+            "thank you for watching",
+            "abone ol",
+            "abone olun",
             "sessizlik",
             ".",
+            "..",
             "...",
+            "????",
+        ]);
+        if (junkExact.has(low)) return true;
+        const junkPatterns = [
+            /izlediginiz\s+icin\s+tesekkur/,
+            /izlediginiz\s+icin/,
+            /tesekkur(ler)?\s+ederim.*izle/,
+            /thanks?\s+for\s+watching/,
+            /thank\s+you\s+for\s+watching/,
+            /^(altyaz[ıi]|subtitle)/i,
+            /\babone\s+ol/,
+            /\bbeğenmeyi\b|\bbegenmeyi\b/,
+            /\blik[eé]\s+and\s+subscribe/,
+            /\bsubscribe\b/,
+            /translated\s+by/,
+            /amara\.org/,
+            /m\.?\s*k\.?\s*$/i,
         ];
-        if (junk.some((j) => low === j || (low.includes(j) && t.length < 28))) return true;
-        // Tek kelime kısaltma / gürültü
-        if (/^[a-zA-ZığüşöçİĞÜŞÖÇ.\s]{1,6}$/.test(t) && !/[aeıioöuüAEIİOÖUÜ]{2,}/.test(t)) {
-            return true;
-        }
+        if (junkPatterns.some((re) => re.test(low))) return true;
+        if (t.length < 2) return true;
         return false;
+    }
+
+    function extensionForMime(mime) {
+        if (!mime) return "webm";
+        if (mime.includes("mp4")) return "mp4";
+        if (mime.includes("ogg")) return "ogg";
+        if (mime.includes("mpeg") || mime.includes("mp3")) return "mp3";
+        if (mime.includes("wav")) return "wav";
+        return "webm";
+    }
+
+    function stopMeterPeakTrack() {
+        peakLevel = 0;
+    }
+
+    async function postHeardText(heard) {
+        const voiceBtn = document.getElementById("voiceBtn");
+        setVoiceUi(false, "Yanıt hazırlanıyor…");
+        if (voiceBtn) voiceBtn.disabled = true;
+        try {
+            const elderId = typeof getOwnerElderId === "function" ? getOwnerElderId() : null;
+            const response = await fetch(`${apiBase()}/text-chat`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    conversation_id: window.activeChatId,
+                    message: heard,
+                    user_id: window.realUserId || null,
+                    user_name: window.userDisplayName || "",
+                    elder_id: elderId,
+                }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data.detail || "Sohbet yanıtı alınamadı");
+            }
+            appendMessageToUI(heard, "user");
+            appendMessageToUI(data.ai_response || "Anladım.", "ai");
+            if (typeof loadConversationsFromSupabase === "function") {
+                await loadConversationsFromSupabase();
+            }
+            if (data.escalation) {
+                try {
+                    if (typeof logActivity === "function") {
+                        logActivity("chat", { channel: "voice", escalation: true });
+                    }
+                } catch (_) { /* ignore */ }
+            }
+        } catch (err) {
+            console.error(err);
+            appendMessageToUI(
+                "Yanıt alınamadı. Backend çalışıyor mu kontrol edin.",
+                "ai"
+            );
+        } finally {
+            if (voiceBtn) voiceBtn.disabled = false;
+            setVoiceUi(false);
+        }
+    }
+
+    async function finishSpeechCapture() {
+        if (speechFinishing) return;
+        speechFinishing = true;
+        const voiceBtn = document.getElementById("voiceBtn");
+        window.isRecording = false;
+        voicePath = null;
+        stopMeter();
+        stopMeterTracks();
+        if (window.stream) {
+            window.stream.getTracks?.().forEach((t) => {
+                try { t.stop(); } catch (_) { /* ignore */ }
+            });
+            window.stream = null;
+        }
+        voiceBtn?.classList.remove("recording");
+
+        const heard = String(speechFinal || "").trim();
+        speechFinal = "";
+        speechRec = null;
+
+        console.info("[voice] speech API sonuç", { heard, peak: peakLevel, elapsed: Date.now() - voiceStartedAt });
+
+        const elapsed = Date.now() - voiceStartedAt;
+        if (elapsed < 500 && !heard) {
+            appendMessageToUI(
+                "Kayıt çok kısa kaldı. Butona basıp en az 1–2 saniye konuşun, bitince tekrar basın.",
+                "ai"
+            );
+            setVoiceUi(false);
+            speechFinishing = false;
+            return;
+        }
+
+        if (!heard || isBadTranscription(heard)) {
+            appendMessageToUI(
+                heard
+                    ? `Sizi net anlayamadım (${heard}). Mikrofona yakın konuşup tekrar dener misiniz?`
+                    : "Sesinizi alamadım. Butona basıp net konuşun, bitince tekrar basın.",
+                "ai"
+            );
+            setVoiceUi(false);
+            speechFinishing = false;
+            return;
+        }
+
+        await postHeardText(heard);
+        speechFinishing = false;
+    }
+
+    function startSpeechRecognitionPath() {
+        const SpeechRecognitionCtor =
+            window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognitionCtor) return false;
+
+        speechFinal = "";
+        speechFinishing = false;
+        const rec = new SpeechRecognitionCtor();
+        speechRec = rec;
+        rec.lang = "tr-TR";
+        rec.interimResults = true;
+        rec.continuous = true;
+        rec.maxAlternatives = 1;
+
+        rec.onresult = (event) => {
+            let interim = "";
+            for (let i = event.resultIndex; i < event.results.length; i += 1) {
+                const piece = event.results[i][0]?.transcript || "";
+                if (event.results[i].isFinal) {
+                    speechFinal = `${speechFinal} ${piece}`.trim();
+                } else {
+                    interim += piece;
+                }
+            }
+            const preview = (speechFinal || interim || "").trim();
+            if (preview) {
+                setVoiceUi(true, `Dinliyorum… “${preview.slice(0, 48)}${preview.length > 48 ? "…" : ""}”`);
+            }
+        };
+
+        rec.onerror = (event) => {
+            const code = event?.error || "";
+            console.warn("[voice] SpeechRecognition error:", code);
+            if (code === "not-allowed" || code === "service-not-allowed") {
+                window.isRecording = false;
+                try { rec.abort(); } catch (_) { /* ignore */ }
+                appendMessageToUI(
+                    "Mikrofon izni gerekli. Tarayıcı ayarlarından izin verip tekrar deneyin.",
+                    "ai"
+                );
+                setVoiceUi(false);
+                document.getElementById("voiceBtn")?.classList.remove("recording");
+                stopMeter();
+                stopMeterTracks();
+                return;
+            }
+            // no-speech / network → bitişte boşsa kullanıcıya söyle
+            if (code === "network" && !speechFinal) {
+                // Chrome network hatası — Whisper'a düş; onend'in boş mesaj basmasını engelle
+                speechFinishing = true;
+                window.isRecording = false;
+                try { rec.abort(); } catch (_) { /* ignore */ }
+                setVoiceUi(false);
+                document.getElementById("voiceBtn")?.classList.remove("recording");
+                stopMeter();
+                stopMeterTracks();
+                speechRec = null;
+                speechFinishing = false;
+                appendMessageToUI(
+                    "Tarayıcı dinlemesi başarısız. Kayıt moduna geçiliyor — tekrar basın.",
+                    "system"
+                );
+                window._forceWhisperNext = true;
+            }
+        };
+
+        rec.onend = () => {
+            // stop() veya sessizlik kesmesi → sonucu işle
+            if (speechFinishing) return;
+            window.isRecording = false;
+            finishSpeechCapture();
+        };
+
+        rec.start();
+        voicePath = "speech";
+        window.isRecording = true;
+        voiceStartedAt = Date.now();
+        document.getElementById("voiceBtn")?.classList.add("recording");
+        setVoiceUi(true, `Dinliyorum (${voiceModeLabel()})… Konuşun, bitince tekrar basın.`);
+
+        // Sadece seviye çubuğu için mikrofon (kayıt değil)
+        if (navigator.mediaDevices?.getUserMedia) {
+            navigator.mediaDevices
+                .getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        channelCount: 1,
+                    },
+                })
+                .then((stream) => {
+                    window.stream = stream;
+                    startMeter(stream);
+                })
+                .catch(() => { /* meter opsiyonel */ });
+        }
+        return true;
+    }
+
+    async function startWhisperRecorderPath() {
+        const voiceBtn = document.getElementById("voiceBtn");
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error("Bu tarayıcı mikrofon desteklemiyor.");
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                channelCount: 1,
+            },
+        });
+        window.stream = stream;
+        voiceChunks = [];
+        window.audioChunks = voiceChunks;
+        peakLevel = 0;
+
+        voiceMime = pickRecorderMime();
+        const recorderOpts = voiceMime ? { mimeType: voiceMime } : undefined;
+        const recorder = new MediaRecorder(stream, recorderOpts);
+        window.mediaRecorder = recorder;
+        voiceMime = recorder.mimeType || voiceMime || "audio/webm";
+
+        recorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+                voiceChunks.push(event.data);
+            }
+        };
+
+        recorder.onerror = (event) => {
+            console.error("MediaRecorder error:", event.error || event);
+        };
+
+        recorder.onstop = async () => {
+            const elapsed = Date.now() - voiceStartedAt;
+            const capturedPeak = peakLevel;
+            stopMeter();
+            stopMeterTracks();
+            setVoiceUi(false);
+            voiceBtn?.classList.remove("recording");
+            voicePath = null;
+
+            const audioBlob = new Blob(voiceChunks, { type: voiceMime || "audio/webm" });
+            stream.getTracks().forEach((t) => {
+                try { t.stop(); } catch (_) { /* ignore */ }
+            });
+
+            console.info("[voice] whisper kayıt bitti", {
+                elapsedMs: elapsed,
+                chunks: voiceChunks.length,
+                bytes: audioBlob.size,
+                mime: voiceMime,
+                peak: capturedPeak,
+            });
+
+            if (elapsed < 800 || audioBlob.size < 1200 || voiceChunks.length === 0) {
+                appendMessageToUI(
+                    "Ses kaydı alınamadı veya çok kısa. En az 1–2 saniye net konuşun, bitince tekrar basın.",
+                    "ai"
+                );
+                return;
+            }
+            if (capturedPeak < 8) {
+                appendMessageToUI(
+                    "Mikrofon neredeyse sessiz kaldı. Ses seviyesini açıp mikrofona yakın konuşun.",
+                    "ai"
+                );
+                return;
+            }
+
+            setVoiceUi(false, "Ses gönderiliyor, lütfen bekleyin…");
+            if (voiceBtn) voiceBtn.disabled = true;
+
+            const ext = extensionForMime(voiceMime);
+            const formData = new FormData();
+            formData.append("file", audioBlob, `voice.${ext}`);
+            formData.append("conversation_id", window.activeChatId);
+            if (window.realUserId) formData.append("user_id", window.realUserId);
+            formData.append("user_name", window.userDisplayName || "");
+            const elderId = typeof getOwnerElderId === "function" ? getOwnerElderId() : null;
+            if (elderId) formData.append("elder_id", elderId);
+
+            try {
+                const response = await fetch(`${apiBase()}/voice-chat`, {
+                    method: "POST",
+                    body: formData,
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.detail || "Ses işlenemedi");
+                }
+
+                const heard = String(data.user_transcription || data.text || "").trim();
+                if (heard && !isBadTranscription(heard)) {
+                    appendMessageToUI(heard, "user");
+                    appendMessageToUI(data.ai_response || "Anladım.", "ai");
+                    if (typeof loadConversationsFromSupabase === "function") {
+                        await loadConversationsFromSupabase();
+                    }
+                } else if (heard) {
+                    appendMessageToUI(`(Algılanan: ${heard})`, "system");
+                    appendMessageToUI(
+                        data.ai_response
+                            || "Sizi net anlayamadım. Mikrofona biraz daha yakın konuşup tekrar dener misiniz?",
+                        "ai"
+                    );
+                } else {
+                    appendMessageToUI(
+                        data.ai_response || "Sesinizi alamadım. Lütfen tekrar deneyin.",
+                        "ai"
+                    );
+                }
+            } catch (err) {
+                console.error(err);
+                appendMessageToUI(
+                    "Ses sunucuya gönderilemedi. Backend çalışıyor mu kontrol edin.",
+                    "ai"
+                );
+            } finally {
+                if (voiceBtn) voiceBtn.disabled = false;
+                setVoiceUi(false);
+            }
+        };
+
+        voiceStartedAt = Date.now();
+        try {
+            recorder.start(250);
+        } catch (_) {
+            recorder.start();
+        }
+        voicePath = "whisper";
+        window.isRecording = true;
+        voiceBtn?.classList.add("recording");
+        setVoiceUi(true, `Kayıt alınıyor (${voiceModeLabel()})… Bitince tekrar basın.`);
+        startMeter(stream);
+    }
+
+    function supportsSpeechRecognition() {
+        return Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+    }
+
+    function voiceModeLabel() {
+        if (supportsSpeechRecognition() && !window._forceWhisperNext) {
+            return "Tarayıcı dinleme (Chrome/Edge)";
+        }
+        return "Kayıt + Whisper (tüm tarayıcılar)";
     }
 
     async function enhancedToggleVoice() {
         const voiceBtn = document.getElementById("voiceBtn");
         if (!window.isRecording) {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                    },
-                });
-                window.stream = stream;
-                window.audioChunks = [];
+                if ("speechSynthesis" in window) {
+                    window.speechSynthesis.cancel();
+                }
+                stopMeterPeakTrack();
 
-                const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-                    ? "audio/webm;codecs=opus"
-                    : "audio/webm";
-                window.mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+                const forceLive = Boolean(window._forceLiveSpeech);
+                window._forceLiveSpeech = false;
 
-                window.mediaRecorder.ondataavailable = (event) => {
-                    if (event.data && event.data.size > 0) {
-                        window.audioChunks.push(event.data);
-                    }
-                };
+                // Varsayılan: Whisper (Türkçe yaşlı sesinde daha güvenilir)
+                // Canlı dinleme yalnızca kullanıcı özellikle isterse
+                if (forceLive && startSpeechRecognitionPath()) {
+                    return;
+                }
 
-                window.mediaRecorder.onstop = async () => {
-                    const elapsed = Date.now() - voiceStartedAt;
-                    stopMeter();
-                    setVoiceUi(false);
-                    voiceBtn?.classList.remove("recording");
-
-                    const tracks = stream.getTracks();
-                    const blobType = window.mediaRecorder?.mimeType || mime;
-                    const audioBlob = new Blob(window.audioChunks, { type: blobType });
-                    tracks.forEach((t) => t.stop());
-
-                    if (elapsed < 800 || audioBlob.size < 1200) {
-                        appendMessageToUI(
-                            "Ses çok kısa kaldı. Mikrofona yaklaşın, butona basıp net konuşun, bitince tekrar basın.",
-                            "ai"
-                        );
-                        speakTurkish("Ses çok kısa kaldı. Lütfen tekrar deneyin.");
-                        return;
-                    }
-
-                    const formData = new FormData();
-                    formData.append("file", audioBlob, "audio.webm");
-                    formData.append("conversation_id", window.activeChatId);
-                    if (window.realUserId) formData.append("user_id", window.realUserId);
-                    formData.append("user_name", window.userDisplayName || "");
-                    const elderId = typeof getOwnerElderId === "function" ? getOwnerElderId() : null;
-                    if (elderId) formData.append("elder_id", elderId);
-
-                    try {
-                        const response = await fetch(`${apiBase()}/voice-chat`, {
-                            method: "POST",
-                            body: formData,
-                        });
-                        const data = await response.json();
-                        const heard = String(data.user_transcription || data.text || "").trim();
-                        if (heard) {
-                            appendMessageToUI(heard, "user");
-                        }
-                        if (!heard || isBadTranscription(heard)) {
-                            const retry =
-                                data.ai_response ||
-                                "Sizi net anlayamadım. Mikrofona biraz daha yakın konuşup tekrar dener misiniz?";
-                            appendMessageToUI(retry, "ai");
-                            speakTurkish(retry);
-                            return;
-                        }
-                        appendMessageToUI(data.ai_response, "ai");
-                        if (typeof loadConversationsFromSupabase === "function") {
-                            await loadConversationsFromSupabase();
-                        }
-                    } catch (err) {
-                        console.error(err);
-                        appendMessageToUI("Sunucuya bağlanılamadı.", "ai");
-                    }
-                };
-
-                voiceStartedAt = Date.now();
-                window.mediaRecorder.start(200);
-                window.isRecording = true;
-                voiceBtn?.classList.add("recording");
-                setVoiceUi(true);
-                startMeter(stream);
-                const hint = document.getElementById("voiceHint");
-                if (hint) hint.textContent = "Dinliyorum… Konuşun, bitince tekrar basın.";
+                appendMessageToUI(
+                    "Kayıt başladı — konuşun, bitince butona tekrar basın.",
+                    "system"
+                );
+                await startWhisperRecorderPath();
             } catch (err) {
                 console.error(err);
                 appendMessageToUI(
-                    "Mikrofon izni gerekli. Tarayıcıdan mikrofona izin verin, sonra tekrar deneyin.",
+                    "Mikrofon izni gerekli veya mikrofon bulunamadı. Tarayıcı ayarlarından izin verip tekrar deneyin.",
                     "ai"
                 );
-                speakTurkish("Mikrofona erişim izni verilmedi. Lütfen izin verin.");
-            }
-        } else {
-            window.isRecording = false;
-            if (window.mediaRecorder && window.mediaRecorder.state !== "inactive") {
-                window.mediaRecorder.requestData?.();
-                window.mediaRecorder.stop();
-            } else {
                 setVoiceUi(false);
                 voiceBtn?.classList.remove("recording");
-                stopMeter();
             }
+            return;
+        }
+
+        // Durdur
+        window.isRecording = false;
+        if (voicePath === "speech" && speechRec) {
+            try {
+                speechRec.stop();
+            } catch (_) {
+                finishSpeechCapture();
+            }
+            return;
+        }
+
+        const recorder = window.mediaRecorder;
+        if (recorder && recorder.state === "recording") {
+            try {
+                if (typeof recorder.requestData === "function") recorder.requestData();
+            } catch (_) { /* ignore */ }
+            recorder.stop();
+        } else {
+            setVoiceUi(false);
+            voiceBtn?.classList.remove("recording");
+            stopMeter();
+            stopMeterTracks();
         }
     }
 
@@ -274,6 +657,7 @@
         card.innerHTML = `
             <p id="checkinGreeting" class="checkin-greeting">${name ? name + ", " : ""}bugün kendini nasıl hissediyorsun?</p>
             <button type="button" class="btn btn-success" onclick="completeCheckin('Harika!')">😊 Çok İyiyim</button>
+            <button type="button" class="btn btn-neutral" onclick="completeCheckin('Normal')">🙂 Normal</button>
             <button type="button" class="btn btn-warn" onclick="completeCheckin('Biraz halsizim')">😐 Biraz Halsizim</button>
         `;
     };
@@ -434,7 +818,7 @@
 
     window.logoutKiosk = function logoutKiosk() {
         localStorage.clear();
-        window.location.href = "onboarding.html";
+        window.location.href = "login.html";
     };
 
     let chatCameraStream = null;
@@ -1203,12 +1587,20 @@
         if (greet && window.userDisplayName) {
             greet.textContent = `${window.userDisplayName}, bugün kendini nasıl hissediyorsun?`;
         }
-        // İlk AI mesajını sesli okuma (sayfa yükünde bir kez)
+        // İlk AI mesajını sesli okuma + check-in hatırlatması
         const firstAi = document.querySelector("#chatBox .msg-ai");
         if (firstAi && !sessionStorage.getItem("kiosk_greeted")) {
             sessionStorage.setItem("kiosk_greeted", "1");
             setTimeout(() => speakTurkish(firstAi.textContent), 600);
         }
+        // Check-in pop-up açıksa sesli hatırlat
+        setTimeout(() => {
+            const modal = document.getElementById("checkinReminderModal");
+            if (modal && modal.style.display === "flex" && !sessionStorage.getItem("kiosk_checkin_spoken")) {
+                sessionStorage.setItem("kiosk_checkin_spoken", "1");
+                speakTurkish("Günlük sağlık kontrolü zamanı. Bugün nasıl hissediyorsunuz?");
+            }
+        }, 1400);
     }
 
     if (document.readyState === "loading") {

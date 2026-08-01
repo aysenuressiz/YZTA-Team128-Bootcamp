@@ -425,7 +425,8 @@ def record_reminder_sent(medication_id: str, schedule_id: str) -> None:
     )
 
 
-def get_medication_stats(elder_id: str) -> dict[str, Any]:
+def get_medication_stats(elder_id: str, days: int = 7) -> dict[str, Any]:
+    days = max(1, min(int(days or 7), 90))
     meds_res = supabase.table("medications").select("id, name").eq("elder_id", elder_id).execute()
     if not meds_res.data:
         return {
@@ -433,27 +434,42 @@ def get_medication_stats(elder_id: str) -> dict[str, Any]:
             "taken": 0,
             "missed": 0,
             "wrong": 0,
+            "snoozed": 0,
             "adherence_rate": 0,
+            "target_rate": 80,
+            "days": days,
             "recent_logs": [],
             "weekly_trend": [],
+            "by_medication": [],
         }
 
     med_ids = [m["id"] for m in meds_res.data]
     med_names = {m["id"]: m["name"] for m in meds_res.data}
 
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    local_tz = ZoneInfo("Europe/Istanbul")
+    since = (datetime.now(local_tz) - timedelta(days=days - 1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).isoformat()
+
     logs_res = (
         supabase.table("medication_logs")
-        .select("*")
+        .select("id, medication_id, status, scheduled_at, created_at")
         .in_("medication_id", med_ids)
-        .order("scheduled_at", desc=False)
+        .gte("scheduled_at", since)
+        .order("scheduled_at", desc=True)
+        .limit(500)
         .execute()
     )
-    logs = logs_res.data or []
+    logs = list(reversed(logs_res.data or []))
 
     actionable = [l for l in logs if l.get("status") in {"taken", "missed", "wrong_medication"}]
     taken = len([l for l in actionable if l.get("status") == "taken"])
     missed = len([l for l in actionable if l.get("status") == "missed"])
     wrong = len([l for l in actionable if l.get("status") == "wrong_medication"])
+    snoozed = len([l for l in logs if l.get("status") == "snoozed"])
     total = len(actionable)
     rate = round((taken / total * 100), 2) if total > 0 else 0
 
@@ -465,39 +481,179 @@ def get_medication_stats(elder_id: str) -> dict[str, Any]:
         day = str(log.get("scheduled_at", ""))[:10]
         if not day:
             continue
-        weekly.setdefault(day, {"taken": 0, "missed": 0, "wrong": 0})
-        weekly[day][log["status"]] = weekly[day].get(log["status"], 0) + 1
+        weekly.setdefault(day, {"taken": 0, "missed": 0, "wrong_medication": 0})
+        st = log.get("status")
+        if st in weekly[day]:
+            weekly[day][st] = weekly[day].get(st, 0) + 1
 
     weekly_trend = [
         {"date": day, **counts}
         for day, counts in sorted(weekly.items())
-    ][-7:]
+    ][-days:]
+
+    per_med: dict[str, dict[str, int]] = {}
+    for log in logs:
+        mid = log.get("medication_id")
+        if not mid:
+            continue
+        bucket = per_med.setdefault(mid, {"taken": 0, "missed": 0, "wrong": 0, "snoozed": 0})
+        st = log.get("status")
+        if st == "taken":
+            bucket["taken"] += 1
+        elif st == "missed":
+            bucket["missed"] += 1
+        elif st == "wrong_medication":
+            bucket["wrong"] += 1
+        elif st == "snoozed":
+            bucket["snoozed"] += 1
+
+    by_medication = []
+    for mid, counts in per_med.items():
+        act = counts["taken"] + counts["missed"] + counts["wrong"]
+        med_rate = round((counts["taken"] / act * 100), 1) if act else 0
+        by_medication.append({
+            "medication_id": mid,
+            "name": med_names.get(mid, "İlaç"),
+            "taken": counts["taken"],
+            "missed": counts["missed"],
+            "wrong": counts["wrong"],
+            "snoozed": counts["snoozed"],
+            "total": act,
+            "adherence_rate": med_rate,
+        })
+    by_medication.sort(key=lambda m: m["adherence_rate"])
 
     return {
         "total_logs": total,
         "taken": taken,
         "missed": missed,
         "wrong": wrong,
+        "snoozed": snoozed,
         "adherence_rate": rate,
+        "target_rate": 80,
+        "days": days,
         "recent_logs": logs[-10:],
         "weekly_trend": weekly_trend,
+        "by_medication": by_medication,
     }
 
 
-def get_elder_alerts(elder_id: str, limit: int = 20) -> list[dict[str, Any]]:
+def get_elder_alerts(
+    elder_id: str,
+    limit: int = 20,
+    *,
+    open_only: bool = False,
+) -> list[dict[str, Any]]:
     try:
-        response = (
+        query = (
             supabase.table("alerts")
             .select("*")
             .eq("elder_id", elder_id)
             .order("created_at", desc=True)
-            .limit(limit)
-            .execute()
+            .limit(limit * 2 if open_only else limit)
         )
-        return response.data or []
+        response = query.execute()
+        rows = response.data or []
+        if open_only:
+            rows = [
+                a for a in rows
+                if _alert_is_open(a)
+            ][:limit]
+        return rows
     except Exception as error:
         print(f"[ALERTS] Okuma hatası: {error}")
         return []
+
+
+def _alert_is_open(alert: dict[str, Any]) -> bool:
+    desc = str(alert.get("description") or "")
+    if desc.startswith("[GÖRÜLDÜ]") or desc.startswith("[ÇÖZÜLDÜ]"):
+        return False
+    status = str(alert.get("status") or "open").lower()
+    return status in {"", "new", "open", "none", "null"}
+
+
+def update_alert_status(
+    alert_id: str,
+    status: str,
+    *,
+    acknowledged_by: str | None = None,
+) -> dict[str, Any] | None:
+    status = (status or "").strip().lower()
+    if status not in {"acknowledged", "resolved", "open", "closed"}:
+        raise ValueError("Geçersiz status")
+
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+    payload: dict[str, Any] = {"status": status}
+    if status == "acknowledged":
+        payload["acknowledged_at"] = now
+        if acknowledged_by:
+            payload["acknowledged_by"] = acknowledged_by
+    if status in {"resolved", "closed"}:
+        payload["resolved_at"] = now
+        if not payload.get("acknowledged_at"):
+            payload["acknowledged_at"] = now
+
+    try:
+        res = (
+            supabase.table("alerts")
+            .update(payload)
+            .eq("id", alert_id)
+            .execute()
+        )
+        if res.data:
+            return res.data[0]
+        # Bazı kurulumlarda status kolonu yok — soft fallback: description prefix
+        if status in {"acknowledged", "resolved"}:
+            existing = (
+                supabase.table("alerts")
+                .select("*")
+                .eq("id", alert_id)
+                .limit(1)
+                .execute()
+            )
+            if existing.data:
+                row = existing.data[0]
+                desc = row.get("description") or ""
+                tag = "[GÖRÜLDÜ] " if status == "acknowledged" else "[ÇÖZÜLDÜ] "
+                if not desc.startswith("[GÖRÜLDÜ]") and not desc.startswith("[ÇÖZÜLDÜ]"):
+                    supabase.table("alerts").update(
+                        {"description": tag + desc}
+                    ).eq("id", alert_id).execute()
+                row = {**row, "status": status, "description": tag + desc}
+                return row
+        return None
+    except Exception as error:
+        print(f"[ALERTS] status güncellenemedi: {error}")
+        # Kolon yoksa description ile işaretle
+        try:
+            existing = (
+                supabase.table("alerts")
+                .select("*")
+                .eq("id", alert_id)
+                .limit(1)
+                .execute()
+            )
+            if not existing.data:
+                return None
+            row = existing.data[0]
+            desc = row.get("description") or ""
+            tag = "[GÖRÜLDÜ] " if status == "acknowledged" else "[ÇÖZÜLDÜ] "
+            if status in {"acknowledged", "resolved"} and not desc.startswith("["):
+                supabase.table("alerts").update(
+                    {"description": tag + desc}
+                ).eq("id", alert_id).execute()
+                return {**row, "status": status, "description": tag + desc}
+        except Exception as fallback_err:
+            print(f"[ALERTS] fallback: {fallback_err}")
+        raise
+
+
+def count_open_alerts(elder_id: str) -> int:
+    alerts = get_elder_alerts(elder_id, limit=50, open_only=True)
+    return len(alerts)
 
 
 def get_elder_event_history(elder_id: str, limit: int = 30) -> list[dict[str, Any]]:

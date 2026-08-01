@@ -1,5 +1,5 @@
 const API_BASE_URL = (window.CONFIG && CONFIG.API_BASE_URL) || "http://127.0.0.1:8000/api";
-const FACE_ANALYSIS_TIMEOUT_MS = 35000;
+const FACE_ANALYSIS_TIMEOUT_MS = 100000;
 const REGISTER_TIMEOUT_MS = 30000;
 
 let localStream = null;
@@ -206,6 +206,9 @@ async function startFaceRecognition() {
                 window.setFaceScanProgress(100, "Tarama tamamlandı!", { done: true, force: true });
             }
             showStatus(`✔️ Giriş başarılı! Hoş geldiniz, ${data.name}`, "ok");
+            if (typeof window.speakFaceLogin === "function") {
+                window.speakFaceLogin(`Giriş başarılı. Hoş geldiniz ${data.name}.`);
+            }
             stopWebcam();
             persistAuthSession({
                 userId: data.user_id,
@@ -224,6 +227,9 @@ async function startFaceRecognition() {
             window.setFaceScanProgress(100, "Sonuç alındı", { fail: true, force: true });
         }
         showStatus(detail, "error");
+        if (typeof window.speakFaceLogin === "function") {
+            window.speakFaceLogin(detail);
+        }
         setTimeout(() => {
             if (typeof window.hideFaceScanProgress === "function") {
                 window.hideFaceScanProgress();
@@ -237,7 +243,13 @@ async function startFaceRecognition() {
         if (typeof window.setFaceScanProgress === "function") {
             window.setFaceScanProgress(100, "Bağlantı hatası", { fail: true, force: true });
         }
-        showStatus("Sistem hatası. Sunucuya bağlanılamadı.", "error");
+        const msg = error && error.message === "timeout"
+            ? "Yüz analizi zaman aşımına uğradı. Şifre ile giriş deneyin veya tekrar deneyin."
+            : "Sistem hatası. Sunucuya bağlanılamadı.";
+        showStatus(msg, "error");
+        if (typeof window.speakFaceLogin === "function") {
+            window.speakFaceLogin(msg);
+        }
         setTimeout(() => {
             if (typeof window.hideFaceScanProgress === "function") {
                 window.hideFaceScanProgress();
@@ -304,15 +316,19 @@ async function loginWithCredentials(event) {
     show("Bilgileriniz doğrulanıyor...", "wait");
 
     try {
-        const response = await fetch(API_BASE_URL + "/auth/elderly-login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                phone: phone || null,
-                email: email || null,
-                password: password,
-            }),
-        });
+        const response = await fetchWithTimeout(
+            API_BASE_URL + "/auth/elderly-login",
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    phone: phone || null,
+                    email: email || null,
+                    password: password,
+                }),
+            },
+            15000
+        );
 
         const data = await response.json();
 
@@ -331,7 +347,14 @@ async function loginWithCredentials(event) {
         }
     } catch (error) {
         console.error("Yazılı giriş hatası:", error);
-        show("Sunucu bağlantı hatası oluştu.", "error");
+        if (error && error.name === "AbortError") {
+            show(
+                "Sunucu yanıt vermiyor (zaman aşımı). Backend'in 8000 portunda çalıştığından emin olun.",
+                "error"
+            );
+        } else {
+            show("Sunucu bağlantı hatası oluştu. Backend açık mı?", "error");
+        }
     }
 }
 
@@ -369,15 +392,19 @@ async function handleFamilyLogin(event) {
     show("Giriş yapılıyor...", "wait");
 
     try {
-        const response = await fetch(API_BASE_URL + "/auth/family-login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                phone: phone || null,
-                email: email || null,
-                password: password,
-            }),
-        });
+        const response = await fetchWithTimeout(
+            API_BASE_URL + "/auth/family-login",
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    phone: phone || null,
+                    email: email || null,
+                    password: password,
+                }),
+            },
+            15000
+        );
 
         const data = await response.json();
 
@@ -402,7 +429,14 @@ async function handleFamilyLogin(event) {
         }
     } catch (error) {
         console.error(error);
-        show("Bağlantı hatası!", "error");
+        if (error && error.name === "AbortError") {
+            show(
+                "Sunucu yanıt vermiyor (zaman aşımı). Backend'in 8000 portunda çalıştığından emin olun.",
+                "error"
+            );
+        } else {
+            show("Bağlantı hatası! Backend açık mı?", "error");
+        }
     }
 }
 

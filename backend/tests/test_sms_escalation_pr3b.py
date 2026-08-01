@@ -40,7 +40,18 @@ def test_danger_and_router_escalation_trigger_sms():
 
 def test_send_family_sms_stub_when_disabled():
     with patch.dict(os.environ, {"FAMILY_SMS_ENABLED": "false"}, clear=False):
-        assert send_family_sms("+905551112233", "Test kritik uyarı") is True
+        result = send_family_sms("+905551112233", "Test kritik uyarı")
+        assert result
+        assert result["mode"] == "stub"
+        assert result["to"] == "+905551112233"
+
+
+def test_to_e164_turkish_local():
+    from services.sms_service import to_e164
+
+    assert to_e164("5444444444") == "+905444444444"
+    assert to_e164("0544 444 44 44") == "+905444444444"
+    assert to_e164("+905444444444") == "+905444444444"
 
 
 def test_maybe_notify_pain_7_does_not_call_send():

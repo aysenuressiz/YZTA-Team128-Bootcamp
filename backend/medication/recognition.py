@@ -5,14 +5,15 @@ import re
 
 from groq import Groq
 
-VISION_MODEL = "llama-3.2-11b-vision-preview"
+from ai_models import VISION_MODEL
 
 RECOGNITION_PROMPT = (
     "Bu görüntüde bir ilaç kutusu, blister veya ilaç şişesi olabilir. "
-    "Görünen ilacın Türkçe adını veya kutuda yazan marka/etken madde adını belirle. "
+    "Kutuda okunan marka / etken madde adını yaz (ör. Metformin, Co-Diovan). "
     "Tıbbi teşhis veya doz önerisi verme. "
     "Yalnızca şu JSON formatında cevap ver, başka metin ekleme:\n"
-    '{"medication_name": "...", "confidence": "high|medium|low", "notes": "..."}\n'
+    '{"medication_name": "...", "confidence": "high|medium|low", '
+    '"notes": "kısa kullanım alanı varsa (tansiyon/şeker vb.)"}\n'
     "İlaç net değilse medication_name değerini Bilinmiyor yap."
 )
 
@@ -43,7 +44,10 @@ def names_match(recognized: str, expected: str) -> bool:
 
 
 def parse_model_json(raw_text: str) -> dict:
-    text = raw_text.strip()
+    text = (raw_text or "").strip()
+    # Qwen thinking / markdown temizliği
+    text = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"<thinking>[\s\S]*?</thinking>", "", text, flags=re.IGNORECASE).strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?", "", text).strip()
         text = re.sub(r"```$", "", text).strip()
@@ -74,23 +78,44 @@ def recognize_medication_from_image(image_bytes: bytes, expected_name: str | Non
         mime_type = "image/webp"
 
     client = get_groq_client()
-    response = client.chat.completions.create(
-        model=VISION_MODEL,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": RECOGNITION_PROMPT},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{mime_type};base64,{image_base64}"},
-                    },
-                ],
-            }
-        ],
-        temperature=0.2,
-        max_tokens=300,
-    )
+    try:
+        response = client.chat.completions.create(
+            model=VISION_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": RECOGNITION_PROMPT},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{image_base64}"},
+                        },
+                    ],
+                }
+            ],
+            temperature=0.2,
+            max_tokens=400,
+            response_format={"type": "json_object"},
+        )
+    except Exception as first_err:
+        print(f"[ILAC TANIMA] json_object denemesi: {first_err}")
+        response = client.chat.completions.create(
+            model=VISION_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": RECOGNITION_PROMPT},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{image_base64}"},
+                        },
+                    ],
+                }
+            ],
+            temperature=0.2,
+            max_tokens=400,
+        )
 
     raw_content = response.choices[0].message.content or ""
     parsed = parse_model_json(raw_content)
@@ -109,8 +134,9 @@ def recognize_medication_from_image(image_bytes: bytes, expected_name: str | Non
             message = f"Doğru ilaç tanındı: {recognized_med}."
         else:
             message = (
-                f"Beklenen ilaç '{expected_name}', tanınan '{recognized_med}'. "
-                "Lütfen doğru kutuyu gösterin."
+                f"Yanlış ilaç. Beklenen: {expected_name}. "
+                f"Kamerada görünen: {recognized_med}. "
+                f"Lütfen {expected_name} kutusunu gösterin."
             )
 
     return {

@@ -145,6 +145,29 @@ def run_orchestrator(
         }
 
     final_state = get_graph().invoke(initial)
+
+    # Her turda risk skoru (aile paneli geçmişi); yükseklerde persist
+    risk_payload = None
+    try:
+        from services.risk_scoring import persist_risk_event, score_message_risk
+
+        risk_payload = score_message_risk(
+            initial["user_message"],
+            intent=final_state.get("intent"),
+            urgency=final_state.get("urgency"),
+            escalated=bool(final_state.get("escalation_needed")),
+        )
+        persist_risk_event(
+            elder_id=elder_id,
+            user_id=user_id,
+            message=initial["user_message"],
+            risk=risk_payload,
+            conversation_id=conversation_id,
+            reason=final_state.get("escalation_reason"),
+        )
+    except Exception as risk_err:
+        print(f"[ORCHESTRATOR] risk skor atlandı: {risk_err}")
+
     return {
         "ai_response": final_state.get("agent_response") or "Bir sorun oluştu, tekrar dener misin?",
         "intent": final_state.get("intent", "companion"),
@@ -152,6 +175,7 @@ def run_orchestrator(
         "escalation": bool(final_state.get("escalation_needed")),
         "urgency": final_state.get("urgency", "low"),
         "escalation_reason": final_state.get("escalation_reason"),
+        "risk": risk_payload,
         "memories_used": final_state.get("retrieved_memories") or [],
         "memories_stored": final_state.get("memories_stored") or [],
         "memory_backend": memory_backend_name(),

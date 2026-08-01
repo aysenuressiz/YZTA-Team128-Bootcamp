@@ -16,6 +16,13 @@ def test_urgent_falls_to_escalation():
     assert result["urgency"] == "high"
 
 
+def test_self_harm_phrases_to_escalation():
+    assert rule_based_intent("ölmek istiyorum") == "escalation"
+    assert rule_based_intent("Kendime zarar vermek istiyorum") == "escalation"
+    assert rule_based_intent("Artık dayanamıyorum") == "escalation"
+    assert rule_based_intent("intihar etmek istiyorum") == "escalation"
+
+
 def test_medication_keyword_to_health():
     assert rule_based_intent("İlacımı içtim") == "health"
     assert rule_based_intent("Tansiyon hapımı unuttum") == "health"

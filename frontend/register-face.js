@@ -255,7 +255,7 @@ function estimateYaw(detection) {
     }
 }
 
-/** Mesafe + poz: yaşlıya tek net komut verir */
+/** Mesafe + poz: yaşlıya tek net komut verir — gevşek eşikler */
 function evaluateFace(detection, video, pose) {
     if (!detection?.box) {
         return {
@@ -277,14 +277,13 @@ function evaluateFace(detection, video, pose) {
         h: box.height,
     };
 
-    // İdeal yüz genişliği ≈ karenin %55–%75'i — sistem mesafe ayarlatır
     const refW = guide?.w || vw * 0.8;
     const sizeRatio = face.w / Math.max(refW, 1);
 
-    if (sizeRatio < 0.42) {
+    if (sizeRatio < 0.28) {
         return { ok: false, reason: "Lütfen kameraya biraz yaklaşın.", code: "near" };
     }
-    if (sizeRatio > 0.88) {
+    if (sizeRatio > 1.05) {
         return { ok: false, reason: "Lütfen biraz geriye gidin.", code: "far" };
     }
 
@@ -295,8 +294,8 @@ function evaluateFace(detection, video, pose) {
         const guideCy = guide.y + guide.h / 2;
         const dx = faceCx - guideCx;
         const dy = faceCy - guideCy;
-        const tolX = guide.w * 0.4;
-        const tolY = guide.h * 0.4;
+        const tolX = guide.w * 0.55;
+        const tolY = guide.h * 0.55;
         if (Math.abs(dx) > tolX || Math.abs(dy) > tolY) {
             return {
                 ok: false,
@@ -309,31 +308,30 @@ function evaluateFace(detection, video, pose) {
     const yaw = estimateYaw(detection);
 
     if (pose === "front") {
-        if (yaw != null && Math.abs(yaw) > 0.2) {
+        if (yaw != null && Math.abs(yaw) > 0.38) {
             return { ok: false, reason: "Kameraya düz bakın.", code: "front" };
         }
         return { ok: true, reason: "Hazır! Fotoğrafı yakala butonuna basın.", code: "ready" };
     }
 
-    // Landmark yoksa yan açı için mesafeyi kabul edip kullanıcıyı sese bırak
     if (yaw == null) {
         return { ok: true, reason: "Hazır! Fotoğrafı yakala butonuna basın.", code: "ready" };
     }
 
     if (pose === "right") {
-        if (yaw > -0.05) {
+        if (yaw > 0.02) {
             return { ok: false, reason: "Kafanızı yavaşça sağa çevirin.", code: "right" };
         }
-        if (yaw < -0.45) {
+        if (yaw < -0.55) {
             return { ok: false, reason: "Biraz daha az çevirin.", code: "right-much" };
         }
         return { ok: true, reason: "Hazır! Fotoğrafı yakala butonuna basın.", code: "ready" };
     }
     if (pose === "left") {
-        if (yaw < 0.05) {
+        if (yaw < -0.02) {
             return { ok: false, reason: "Kafanızı yavaşça sola çevirin.", code: "left" };
         }
-        if (yaw > 0.45) {
+        if (yaw > 0.55) {
             return { ok: false, reason: "Biraz daha az çevirin.", code: "left-much" };
         }
         return { ok: true, reason: "Hazır! Fotoğrafı yakala butonuna basın.", code: "ready" };
@@ -341,38 +339,45 @@ function evaluateFace(detection, video, pose) {
     return { ok: true, reason: "Hazır! Fotoğrafı yakala butonuna basın.", code: "ready" };
 }
 
-/** Önce landmark, olmazsa sadece kutu — hata mesajı göstermeden devam */
+/** Önce landmark, olmazsa sadece kutu — birden fazla inputSize dene */
 async function detectFaceSafe(video) {
-    const opts = new faceapi.TinyFaceDetectorOptions({
-        inputSize: 320,
-        scoreThreshold: 0.15,
-    });
-    try {
-        const withLandmarks = await faceapi
-            .detectSingleFace(video, opts)
-            .withFaceLandmarks(true);
-        if (withLandmarks) return withLandmarks;
-    } catch (err) {
-        console.warn("Landmark analizi atlandı:", err);
+    if (typeof faceapi === "undefined") return null;
+    const sizes = [416, 320, 224];
+    for (const inputSize of sizes) {
+        const opts = new faceapi.TinyFaceDetectorOptions({
+            inputSize,
+            scoreThreshold: 0.12,
+        });
+        try {
+            const withLandmarks = await faceapi
+                .detectSingleFace(video, opts)
+                .withFaceLandmarks(true);
+            if (withLandmarks) return withLandmarks;
+        } catch (err) {
+            console.warn("Landmark analizi atlandı:", err);
+        }
+        try {
+            const boxOnly = await faceapi.detectSingleFace(video, opts);
+            if (boxOnly) return boxOnly;
+        } catch (err) {
+            console.warn("Yüz kutusu alınamadı:", err);
+        }
     }
-    try {
-        return await faceapi.detectSingleFace(video, opts);
-    } catch (err) {
-        console.warn("Yüz kutusu alınamadı:", err);
-        return null;
-    }
+    return null;
 }
 
 let faceDetectBusy = false;
 let lastGuideCode = "";
 let lastGuideSpokenAt = 0;
+let softUnlockAt = 0;
+let consecutiveDetections = 0;
 
 function speakGuide(code) {
     const text = GUIDE_VOICE[code];
     if (!text) return;
     const now = Date.now();
-    // Aynı uyarıyı en erken 3.5 sn'de bir tekrarla (yaşlı için hatırlatma)
-    if (code === lastGuideCode && now - lastGuideSpokenAt < 3500) return;
+    // Aynı uyarıyı en erken 5 sn'de bir tekrarla
+    if (code === lastGuideCode && now - lastGuideSpokenAt < 5000) return;
     lastGuideCode = code;
     lastGuideSpokenAt = now;
     speak(text);
@@ -386,7 +391,7 @@ async function faceDetectTick() {
     const scheduleNext = () => {
         faceDetectLoop = setTimeout(() => {
             faceDetectTick();
-        }, 200);
+        }, 220);
     };
 
     if (!video || !registerStream || video.readyState < 2) {
@@ -405,13 +410,35 @@ async function faceDetectTick() {
     try {
         if (faceModelsReady && typeof faceapi !== "undefined") {
             const detection = await detectFaceSafe(video);
+            if (detection?.box) {
+                consecutiveDetections += 1;
+            } else {
+                consecutiveDetections = 0;
+            }
             result = evaluateFace(detection, video, step.pose);
+            // Yüz birkaç kare göründüyse ama eşikler sıkıysa yumuşak kilidi aç
+            if (!result.ok && consecutiveDetections >= 4 && detection?.box) {
+                result = {
+                    ok: true,
+                    reason: "Yüz algılandı. Fotoğrafı yakala butonuna basabilirsiniz.",
+                    code: "ready",
+                };
+            }
         } else {
             result = {
                 ok: false,
                 reason: "Kameraya bakın. Model yükleniyor…",
                 code: "search",
             };
+            // Model yoksa / gecikirse 4 sn sonra yine çekime izin ver
+            if (!softUnlockAt) softUnlockAt = Date.now() + 4000;
+            if (Date.now() >= softUnlockAt) {
+                result = {
+                    ok: true,
+                    reason: "Hazır! Fotoğrafı yakala butonuna basın.",
+                    code: "ready",
+                };
+            }
         }
     } catch (err) {
         console.warn("Yüz analizi hatası:", err);
@@ -420,6 +447,14 @@ async function faceDetectTick() {
             reason: "Kameraya bakın. Yüzünüz görünsün.",
             code: "noface",
         };
+        if (!softUnlockAt) softUnlockAt = Date.now() + 5000;
+        if (Date.now() >= softUnlockAt) {
+            result = {
+                ok: true,
+                reason: "Hazır! Fotoğrafı yakala butonuna basın.",
+                code: "ready",
+            };
+        }
     } finally {
         faceDetectBusy = false;
     }
@@ -469,6 +504,8 @@ async function openRegisterCamera() {
         faceReadyToCapture = false;
         lastGuideCode = "";
         lastGuideSpokenAt = 0;
+        softUnlockAt = 0;
+        consecutiveDetections = 0;
         clearCameraStatus();
 
         const captureBtn = document.getElementById("reg-cam-capture-btn");
@@ -514,9 +551,12 @@ function captureRegisterFace() {
     const video = document.getElementById("reg-webcam");
     const preview = document.getElementById("reg-preview");
     if (!video || !registerStream) return;
-    if (!faceReadyToCapture && faceModelsReady) {
-        speak("Henüz hazır değil. Çerçeve yeşil olunca deneyin.");
-        return;
+    // Model hazır ve yüz henüz yeşil değilse uyar ama 2. denemede yine de çek
+    if (!faceReadyToCapture && faceModelsReady && consecutiveDetections < 1) {
+        speak("Henüz hazır değil. Çerçeve yeşil olunca deneyin veya biraz bekleyin.");
+        // Yine de 1 sn soft unlock
+        if (!softUnlockAt) softUnlockAt = Date.now() + 1000;
+        if (Date.now() < softUnlockAt) return;
     }
 
     const step = FACE_STEPS[faceCaptureIndex] || FACE_STEPS[0];

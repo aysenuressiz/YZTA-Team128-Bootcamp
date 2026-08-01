@@ -50,6 +50,7 @@ function stopFaceScanCreep() {
 function setFaceScanProgress(percent, label, opts = {}) {
     const overlay = document.getElementById("face-scan-overlay");
     const water = document.getElementById("face-scan-water");
+    const sandTop = document.getElementById("face-scan-sand-top");
     const pctEl = document.getElementById("face-scan-pct");
     const labelEl = document.getElementById("face-scan-label");
     const stage = document.getElementById("cam-stage");
@@ -66,7 +67,8 @@ function setFaceScanProgress(percent, label, opts = {}) {
     overlay.classList.toggle("is-done", Boolean(opts.done));
     overlay.classList.toggle("is-fail", Boolean(opts.fail));
     if (stage) stage.classList.add("is-scanning");
-    if (water) water.style.setProperty("--fill", `${next}%`);
+    if (water) water.style.setProperty("--fill", `${Math.max(8, next)}%`);
+    if (sandTop) sandTop.style.setProperty("--top-fill", `${Math.max(6, 100 - next)}%`);
     if (pctEl) pctEl.textContent = `${next}%`;
     if (labelEl && label) labelEl.textContent = label;
 }
@@ -76,42 +78,64 @@ function hideFaceScanProgress() {
     _faceScanPercent = 0;
     const overlay = document.getElementById("face-scan-overlay");
     const water = document.getElementById("face-scan-water");
+    const sandTop = document.getElementById("face-scan-sand-top");
     const stage = document.getElementById("cam-stage");
     if (overlay) {
         overlay.hidden = true;
         overlay.classList.remove("is-done", "is-fail");
     }
-    if (water) water.style.setProperty("--fill", "0%");
+    if (water) water.style.setProperty("--fill", "8%");
+    if (sandTop) sandTop.style.setProperty("--top-fill", "42%");
     if (stage) stage.classList.remove("is-scanning");
     const pctEl = document.getElementById("face-scan-pct");
     if (pctEl) pctEl.textContent = "0%";
 }
 
 /**
- * Sunucu analizi sürerken: gerçek yanıt gelene kadar %92'ye asymptotic yaklaş.
- * %100 yalnızca sonuç geldiğinde set edilir.
+ * Sunucu analizi sürerken: gerçek yanıt gelene kadar %97'ye asymptotic yaklaş,
+ * uzun sürerse 94–97 arası nabız atarak “takılı” hissini kır.
  */
 function startFaceScanCreep(fromPercent) {
     stopFaceScanCreep();
     const start = Math.max(fromPercent || _faceScanPercent, 40);
     const startedAt = Date.now();
-    const cap = 92;
-    const expectedMs = 12000;
+    const cap = 97;
+    const expectedMs = 8000;
 
     _faceScanCreepTimer = setInterval(() => {
         const elapsed = Date.now() - startedAt;
-        // 1 - e^(-t/T) → hızlı başlar, 92'ye asymptotik yaklaşır
         const t = elapsed / expectedMs;
-        const eased = start + (cap - start) * (1 - Math.exp(-2.2 * t));
-        const pct = Math.min(cap, eased);
-        setFaceScanProgress(pct, "Yüz analizi yapılıyor…");
-        if (pct >= cap - 0.2) stopFaceScanCreep();
+        let pct;
+        if (t < 1.15) {
+            pct = start + (cap - start) * (1 - Math.exp(-2.4 * t));
+            pct = Math.min(cap, pct);
+            setFaceScanProgress(pct, "Yüz analizi yapılıyor…");
+        } else {
+            // Cap sonrası hafif nabız — kullanıcı “dondu” sanmasın
+            const pulse = 94 + Math.abs(Math.sin(elapsed / 700)) * 3;
+            setFaceScanProgress(pulse, "Hâlâ inceleniyor, lütfen bekleyin…", { force: true });
+        }
     }, 120);
+}
+
+function speakFaceLogin(text) {
+    try {
+        if (!window.speechSynthesis || !text) return;
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = "tr-TR";
+        utter.rate = 0.95;
+        window.speechSynthesis.speak(utter);
+    } catch (_) {
+        /* sessiz */
+    }
 }
 
 function postFaceLoginWithProgress(base64Image) {
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
+        // Backend FACE_ANALYSIS_TIMEOUT_SEC=90 — istemci biraz paylı
+        xhr.timeout = 100000;
         xhr.open("POST", `${API_BASE_URL}/auth/face-login`);
         xhr.setRequestHeader("Content-Type", "application/json");
         xhr.responseType = "json";
@@ -131,6 +155,11 @@ function postFaceLoginWithProgress(base64Image) {
         xhr.onerror = () => {
             stopFaceScanCreep();
             reject(new Error("network"));
+        };
+
+        xhr.ontimeout = () => {
+            stopFaceScanCreep();
+            reject(new Error("timeout"));
         };
 
         xhr.onload = () => {
@@ -183,6 +212,7 @@ function bootLoginPage() {
     window.startFaceScanCreep = startFaceScanCreep;
     window.stopFaceScanCreep = stopFaceScanCreep;
     window.postFaceLoginWithProgress = postFaceLoginWithProgress;
+    window.speakFaceLogin = speakFaceLogin;
 }
 
 if (document.readyState === "loading") {

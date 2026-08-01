@@ -145,30 +145,47 @@ window.MedicationRecognition = (() => {
         }
 
         try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 90000);
             const response = await fetch(`${API_BASE_URL}/medication/recognize`, {
                 method: "POST",
                 body: formData,
+                signal: controller.signal,
             });
+            clearTimeout(timer);
 
-            const data = await response.json();
+            let data = {};
+            try {
+                data = await response.json();
+            } catch (_) {
+                data = {};
+            }
             if (!response.ok) {
-                throw new Error(data.detail || "Tanıma başarısız");
+                const detail = data.detail || data.message || `Sunucu hatası (${response.status})`;
+                throw new Error(typeof detail === "string" ? detail : "Tanıma başarısız");
             }
 
             if (data.agent_decision === "wrong_medication" || data.is_match === false) {
-                setStatus(data.message || "Bu ilaç beklenen ilaçla eşleşmedi.", true);
-                speakTurkish(data.message || "Bu ilaç doğru ilaç değil. Lütfen doğru kutuyu gösterin.");
-                alert(`⚠️ ${data.message}`);
+                const wrongMsg =
+                    data.message
+                    || `Yanlış ilaç. Beklenen: ${state.expectedName || "planlanan ilaç"}. `
+                        + `Kamerada: ${data.recognized_med || "tanınamadı"}.`;
+                setStatus(wrongMsg, true);
+                speakTurkish(wrongMsg);
+                alert(`⚠️ ${wrongMsg}`);
                 return;
             }
 
             if (data.agent_decision === "taken" || data.is_match === true) {
-                setStatus(data.message || `Tanınan ilaç: ${data.recognized_med}`);
-                speakTurkish(data.message || "Harika, doğru ilaç. İçebilirsiniz.");
-                alert(`✅ ${data.message || data.recognized_med}`);
+                const okMsg = data.message || `Harika, doğru ilaç: ${data.recognized_med}`;
+                setStatus(okMsg);
+                speakTurkish(okMsg);
+                alert(`✅ ${okMsg}`);
             } else if (!state.expectedName) {
-                setStatus(data.message || `Tanınan ilaç: ${data.recognized_med}`);
-                alert(`📷 ${data.message || data.recognized_med}`);
+                const infoMsg = data.message || `Tanınan ilaç: ${data.recognized_med}`;
+                setStatus(infoMsg);
+                speakTurkish(infoMsg);
+                alert(`📷 ${infoMsg}`);
                 if (typeof MedicationDefinitions !== "undefined" && state.medId) {
                     await MedicationDefinitions.markTaken(
                         state.medId,
@@ -189,8 +206,12 @@ window.MedicationRecognition = (() => {
             close();
         } catch (error) {
             console.error(error);
-            setStatus("Sunucuya bağlanılamadı veya tanıma hatası oluştu.", true);
-            alert("İlaç tanıma sırasında hata oluştu.");
+            const msg = error?.name === "AbortError"
+                ? "Tanıma zaman aşımına uğradı. Tekrar deneyin."
+                : (error?.message || "Sunucuya bağlanılamadı veya tanıma hatası oluştu.");
+            setStatus(msg, true);
+            speakTurkish(msg);
+            alert(msg);
         }
     }
 
