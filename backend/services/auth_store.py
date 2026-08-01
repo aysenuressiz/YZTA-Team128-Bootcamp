@@ -611,3 +611,41 @@ def get_family_phone_for_user(user_id: str) -> dict[str, Any] | None:
                 "family_name": auth.get("family_name"),
             }
     return None
+
+
+def set_family_sms_pref(
+    user_id: str,
+    *,
+    sms_enabled: bool,
+    family_phone: str | None = None,
+) -> bool:
+    """users veya elders.notes auth blob üzerinde SMS tercihini güncelle."""
+    if users_table_exists():
+        try:
+            payload: dict[str, Any] = {"family_sms_enabled": bool(sms_enabled)}
+            if family_phone is not None:
+                payload["family_phone"] = (family_phone or "").strip() or None
+            res = (
+                supabase.table("users")
+                .update(payload)
+                .eq("id", user_id)
+                .execute()
+            )
+            if res.data:
+                return True
+        except Exception as error:
+            logger.warning("users SMS pref update: %s", error)
+
+    elders = supabase.table("elders").select("*").execute().data or []
+    for elder in elders:
+        auth = _parse_auth_from_notes(elder.get("notes")) or {}
+        if auth.get("user_id") == user_id or elder.get("id") == user_id:
+            auth["family_sms_enabled"] = bool(sms_enabled)
+            if family_phone is not None:
+                auth["family_phone"] = (family_phone or "").strip() or None
+            notes = _encode_auth_notes(auth)
+            if auth.get("user_id"):
+                notes = notes + f"\nusers tablosu user_id: {auth.get('user_id')}"
+            supabase.table("elders").update({"notes": notes}).eq("id", elder["id"]).execute()
+            return True
+    return False

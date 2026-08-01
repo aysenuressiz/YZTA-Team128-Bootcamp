@@ -14,15 +14,40 @@ from orchestrator.prompts import ROUTER_SYSTEM
 URGENT_PATTERNS = [
     r"d[uü][sş]t[uü]m",
     r"kalkam[ıi]yorum",
-    r"yard[ıi]m\s*et",
     r"nefes\s*alam[ıi]yorum",
     r"bay[ıi]l",
     r"g[oö][gğ][uü]s\s*a[gğ]r[ıi]",
-    r"acil",
     r"ambulans",
     r"kanama",
     r"bilincimi\s*kaybett",
+    r"\bimdat\b",
+    r"yard[ıi]m\s*et.*(d[uü][sş]|kalk|nefes|a[gğ]r|acil)",
+    r"(d[uü][sş]|nefes|bay[ıi]l).{0,24}yard[ıi]m",
+    r"\bacil\s*(yard[ıi]m|durum|ça[gğ][ıi]r|cagir)",
+    # Kendine zarar / umutsuzluk
+    r"[oö]lmek\s*ist",
+    r"intihar",
+    r"kendimi\s*[oö]ld[uü]r",
+    r"kendime\s*zarar",
+    r"ya[sş]amak\s*istem(iyorum|iyorum)",
+    r"art[ıi]k\s*dayanam[ıi]yorum",
+    r"hayatıma\s*son",
 ]
+
+# Yanlış pozitif: hikâye / ev işi / olumsuzlama — escalation YAPMA
+SAFE_OVERRIDE_PATTERNS = [
+    r"acil\s+de[gğ]il",
+    r"acil\s+olmad[ıi]",
+    r"yard[ıi]m\s+etme(yin|yin)?\b",
+    r"filmde|dizide|haber(de|lerde)",
+    r"kom[sş]u(ya|mun)?\s+yard[ıi]m",
+    r"bula[sş][ıi]k",
+    r"market(e|ten)",
+    r"al[ıi][sş]veri[sş]",
+    r"torunum(a|un)?\s+yard[ıi]m",
+    r"yemek\s+yap",
+]
+
 
 HEALTH_PATTERNS = [
     r"ila[cç]",
@@ -44,18 +69,57 @@ def _normalize(text: str) -> str:
     return (text or "").strip().lower()
 
 
+def _is_safe_override(text: str) -> bool:
+    return any(re.search(p, text, re.IGNORECASE) for p in SAFE_OVERRIDE_PATTERNS)
+
+
+def is_medication_identity_question(message: str) -> bool:
+    """'Bu ne ilacı?' gibi bilgi soruları — acil/sağlık riski değil."""
+    text = _normalize(message)
+    if not text:
+        return False
+    if re.search(r"\bne\s+ila[cç]", text):
+        return True
+    if re.search(r"hangi\s+ila[cç]", text):
+        return True
+    if re.search(r"\bbu\s+ila[cç]", text) and re.search(r"\b(ne|nedir|ismi|ad[ıi])\b", text):
+        return True
+    if re.search(r"ila[cç].{0,16}(nedir|ismi|ad[ıi])\b", text):
+        return True
+    return False
+
+
 def rule_based_intent(message: str) -> str | None:
     """Acil durumda escalation, güçlü sağlık sinyalinde health döner; aksi None."""
     text = _normalize(message)
     if not text:
         return None
 
+    # Bilgi sorusu: "ne ilacı" → companion (risk şişmesin)
+    if is_medication_identity_question(message):
+        return None
+
+    if _is_safe_override(text):
+        # Güvenli bağlamda bile ilaç/ağrı varsa health olabilir
+        strong_health = any(
+            re.search(p, text, re.IGNORECASE)
+            for p in [r"ila[cç]", r"hap", r"doz", r"i[cç]tim", r"a[gğ]r[ıi]", r"tansiyon", r"semptom"]
+        )
+        if strong_health:
+            return "health"
+        return None
+
     for pattern in URGENT_PATTERNS:
         if re.search(pattern, text, re.IGNORECASE):
             return "escalation"
 
+    # Tek başına "acil" — yalnızca kısa/bağlamsız acil çağrı
+    if re.search(r"^\s*acil[!?.]*\s*$", text, re.IGNORECASE) or re.search(
+        r"\bacil\s+yard[ıi]m\b", text, re.IGNORECASE
+    ):
+        return "escalation"
+
     health_hits = sum(1 for pattern in HEALTH_PATTERNS if re.search(pattern, text, re.IGNORECASE))
-    # "nasılsın" tek başına sohbet olabilir; ilaç/ağrı ile birlikteyse health
     strong_health = any(
         re.search(p, text, re.IGNORECASE)
         for p in [r"ila[cç]", r"hap", r"doz", r"i[cç]tim", r"a[gğ]r[ıi]", r"tansiyon", r"semptom"]
@@ -128,17 +192,26 @@ def llm_classify_intent(message: str, history: list[dict[str, Any]] | None = Non
 def resolve_intent(message: str, history: list[dict[str, Any]] | None = None) -> dict[str, str]:
     """Önce kural tabanlı acil/sağlık, sonra LLM; hata olursa companion."""
     ruled = rule_based_intent(message)
+    snippet = (message or "").strip()
+    if len(snippet) > 120:
+        snippet = snippet[:117] + "…"
     if ruled == "escalation":
         return {
             "intent": "escalation",
             "urgency": "high",
-            "reason": "Kural tabanlı acil durum kalıbı",
+            "reason": (
+                "Acil durum anahtar kelimesi algılandı "
+                f"(ör. düşme, nefes darlığı, yardım çağrısı). Kullanıcı: «{snippet}»"
+            ),
         }
     if ruled == "health":
         return {
             "intent": "health",
             "urgency": "medium",
-            "reason": "Kural tabanlı sağlık/ilaç kalıbı",
+            "reason": (
+                "Sağlık/ilaç ifadesi algılandı "
+                f"(ağrı, ilaç, tansiyon vb.). Kullanıcı: «{snippet}»"
+            ),
         }
 
     try:

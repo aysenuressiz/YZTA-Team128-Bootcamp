@@ -39,11 +39,14 @@ def evaluate_recognition(
                 f"tanınan: '{recognized_name}'."
             ),
         )
+        recognized = (recognized_name or "bilinmeyen ilaç").strip() or "bilinmeyen ilaç"
+        expected = (expected_name or "beklenen ilaç").strip()
         return {
             "decision": STATUS_WRONG,
             "message": (
-                f"Bu ilaç beklenen '{expected_name}' ile uyuşmuyor. "
-                "Lütfen doğru kutuyu gösterin veya bir yakınınıza danışın."
+                f"Yanlış ilaç. Beklenen: {expected}. "
+                f"Kamerada görünen: {recognized}. "
+                f"Lütfen {expected} kutusunu gösterin; emin değilseniz bir yakınınıza danışın."
             ),
             "log": log,
         }
@@ -158,16 +161,28 @@ def _create_escalation_alert(
     except Exception as error:
         print(f"[ESKALASYON] Alert kaydı başarısız: {error}")
 
-    if severity == "high":
+    if severity in {"high", "medium", "critical"}:
         try:
-            from routers.websocket import notify_family_critical
+            from services.family_notify import notify_family
 
-            notify_family_critical(
-                elder_id,
+            notify_family(
+                elder_id=elder_id,
                 description=description,
-                severity=severity,
                 alert_type=alert_type,
-                urgency="high",
+                severity=severity,
+                send_sms=severity in {"high", "critical"},
             )
         except Exception as error:
-            print(f"[ESKALASYON] Aile WS bildirimi atlandı: {error}")
+            print(f"[ESKALASYON] Aile bildirimi atlandı: {error}")
+            try:
+                from routers.websocket import notify_family_critical
+
+                notify_family_critical(
+                    elder_id,
+                    description=description,
+                    severity=severity,
+                    alert_type=alert_type,
+                    urgency="high",
+                )
+            except Exception as ws_err:
+                print(f"[ESKALASYON] Aile WS bildirimi atlandı: {ws_err}")

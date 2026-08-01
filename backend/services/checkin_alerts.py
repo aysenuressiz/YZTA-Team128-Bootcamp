@@ -91,13 +91,25 @@ def _create_checkin_missing_alert(elder_id: str, elder_name: str) -> None:
     today = datetime.now(LOCAL_TZ).strftime("%Y-%m-%d")
     _sent_checkin_alerts.add(f"{elder_id}:{today}")
 
-    notify_family_critical(
-        elder_id,
-        description=description,
-        severity="medium",
-        alert_type="checkin_missing",
-        urgency="medium",
-    )
+    try:
+        from services.family_notify import notify_family
+
+        notify_family(
+            elder_id=elder_id,
+            description=description,
+            alert_type="checkin_missing",
+            severity="medium",
+            send_sms=False,
+        )
+    except Exception as error:
+        print(f"[CHECKIN-MISS] aile bildirimi atlandı: {error}")
+        notify_family_critical(
+            elder_id,
+            description=description,
+            severity="medium",
+            alert_type="checkin_missing",
+            urgency="medium",
+        )
     print(f"[CHECKIN-MISS] Uyarı oluşturuldu: {elder_name} / {elder_id}")
 
 

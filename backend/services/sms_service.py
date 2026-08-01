@@ -1,4 +1,4 @@
-"""Twilio SMS — FAMILY_SMS_ENABLED=true ise gerçek, değilse güvenli stub."""
+"""Twilio SMS — kimlik bilgisi varsa gerçek gönderim, yoksa güvenli stub."""
 
 from __future__ import annotations
 
@@ -42,47 +42,223 @@ def should_send_family_sms(
     return False
 
 
-def send_family_sms(to_phone: str, message: str) -> bool:
-    """FAMILY_SMS_ENABLED=true ise Twilio, aksi halde [SMS STUB] log."""
-    if not to_phone or not str(to_phone).strip():
-        logger.warning("SMS gönderilemedi: alıcı telefon yok.")
-        return False
+def _twilio_credentials() -> dict[str, str] | None:
+    """
+    İki yol:
+    1) Account SID (AC…) + Auth Token + From phone
+    2) Account SID (AC…) + API Key (SK…) + API Secret + From phone
+    """
+    account_sid = (os.getenv("TWILIO_ACCOUNT_SID") or "").strip()
+    auth_token = (os.getenv("TWILIO_AUTH_TOKEN") or "").strip()
+    api_key = (os.getenv("TWILIO_API_KEY") or "").strip()
+    api_secret = (os.getenv("TWILIO_API_SECRET") or "").strip()
+    from_phone = (os.getenv("TWILIO_PHONE_NUMBER") or "").strip()
 
-    phone = str(to_phone).strip()
+    placeholders = ("your_", "xxx", "changeme")
+    values = [account_sid, auth_token, api_key, api_secret, from_phone]
+    if any(
+        v.lower().startswith(p)
+        for v in values if v
+        for p in placeholders
+    ):
+        return None
+
+    if not from_phone or not account_sid:
+        return None
+    # Account SID Twilio'da AC ile başlar
+    if not account_sid.startswith("AC"):
+        return None
+
+    if api_key.startswith("SK") and api_secret:
+        return {
+            "auth_mode": "api_key",
+            "account_sid": account_sid,
+            "api_key": api_key,
+            "api_secret": api_secret,
+            "from_phone": from_phone,
+        }
+
+    if auth_token:
+        return {
+            "auth_mode": "auth_token",
+            "account_sid": account_sid,
+            "auth_token": auth_token,
+            "from_phone": from_phone,
+        }
+
+    return None
+
+
+def sms_delivery_mode() -> str:
+    """
+    twilio | stub | misconfigured
+    FAMILY_SMS_ENABLED:
+      - false/off → her zaman stub
+      - true/on  → twilio (eksikse misconfigured)
+      - auto/boş → kimlik varsa twilio, yoksa stub
+    """
+    flag = (os.getenv("FAMILY_SMS_ENABLED") or "auto").strip().lower()
+    has_creds = _twilio_credentials() is not None
+
+    if flag in {"0", "false", "no", "off"}:
+        return "stub"
+    if flag in {"1", "true", "yes", "on"}:
+        return "twilio" if has_creds else "misconfigured"
+    # auto
+    return "twilio" if has_creds else "stub"
+
+
+def twilio_ready() -> bool:
+    return sms_delivery_mode() == "twilio"
+
+
+def to_e164(phone: str, *, default_region: str = "TR") -> str | None:
+    """Yerel TR numarayı Twilio E.164 formatına çevirir (+905xxxxxxxxx)."""
+    raw = (phone or "").strip()
+    if not raw or raw.lower().startswith("email:"):
+        return None
+
+    if raw.startswith("+"):
+        digits = re.sub(r"\D", "", raw)
+        return f"+{digits}" if len(digits) >= 10 else None
+
+    digits = re.sub(r"\D", "", raw)
+    if not digits:
+        return None
+
+    if default_region.upper() == "TR":
+        if digits.startswith("90") and len(digits) >= 12:
+            digits = digits[2:]
+        if digits.startswith("0") and len(digits) == 11:
+            digits = digits[1:]
+        if len(digits) == 10 and digits.startswith("5"):
+            return f"+90{digits}"
+        if len(digits) >= 10:
+            return f"+90{digits[-10:]}"
+
+    if len(digits) >= 10:
+        return f"+{digits}"
+    return None
+
+
+def send_family_sms(to_phone: str, message: str) -> dict[str, Any]:
+    """
+    Gerçek Twilio veya stub.
+    Dönüş: {sent, mode, to, reason?, sid?}
+    Geriye uyumluluk: bool(result) → sent
+    """
+    result: dict[str, Any] = {"sent": False, "mode": sms_delivery_mode(), "to": None}
+
+    if not to_phone or not str(to_phone).strip():
+        result["reason"] = "no_phone"
+        logger.warning("SMS gönderilemedi: alıcı telefon yok.")
+        return _SmsResult(result)
+
+    e164 = to_e164(str(to_phone))
+    if not e164:
+        result["reason"] = "invalid_phone"
+        logger.warning("SMS gönderilemedi: geçersiz telefon %r", to_phone)
+        return _SmsResult(result)
+
+    result["to"] = e164
     body = (message or "").strip()
     if not body:
+        result["reason"] = "empty_body"
         logger.warning("SMS gönderilemedi: mesaj boş.")
-        return False
+        return _SmsResult(result)
 
-    sms_enabled = os.getenv("FAMILY_SMS_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+    mode = result["mode"]
+    if mode == "stub":
+        logger.info("[SMS STUB] Kime: %s | Mesaj: %s", e164, body)
+        print(f"[SMS STUB] Kime: {e164} | Mesaj: {body}")
+        result["sent"] = True
+        result["reason"] = "stub"
+        return _SmsResult(result)
 
-    if not sms_enabled:
-        logger.info("[SMS STUB] Kime: %s | Mesaj: %s", phone, body)
-        print(f"[SMS STUB] Kime: {phone} | Mesaj: {body}")
-        return True
+    if mode == "misconfigured":
+        result["reason"] = "twilio_credentials_missing"
+        logger.error(
+            "FAMILY_SMS_ENABLED açık ama TWILIO_ACCOUNT_SID / AUTH_TOKEN / PHONE_NUMBER eksik."
+        )
+        print("[SMS] Twilio kimlik bilgileri eksik — gerçek SMS gönderilemedi.")
+        return _SmsResult(result)
+
+    creds = _twilio_credentials()
+    if not creds:
+        result["reason"] = "twilio_credentials_missing"
+        return _SmsResult(result)
 
     try:
         from twilio.rest import Client
     except ImportError:
+        result["reason"] = "twilio_package_missing"
         logger.error("twilio paketi yüklü değil; SMS gönderilemedi.")
-        return False
-
-    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-    from_phone = os.getenv("TWILIO_PHONE_NUMBER")
-
-    if not all([account_sid, auth_token, from_phone]):
-        logger.error("Twilio kimlik bilgileri eksik (SID/TOKEN/PHONE).")
-        return False
+        print("[SMS] twilio paketi yok: pip install twilio")
+        return _SmsResult(result)
 
     try:
-        client = Client(account_sid, auth_token)
-        client.messages.create(body=body, from_=from_phone, to=phone)
-        logger.info("SMS gönderildi → %s", phone)
-        return True
+        if creds.get("auth_mode") == "api_key":
+            client = Client(
+                creds["api_key"],
+                creds["api_secret"],
+                creds["account_sid"],
+            )
+        else:
+            client = Client(creds["account_sid"], creds["auth_token"])
+
+        # Yeni Twilio trial: özel body yasak; şablon adı kullanılmalı
+        trial_flag = (os.getenv("TWILIO_TRIAL_MODE") or "auto").strip().lower()
+        trial_template = (
+            os.getenv("TWILIO_TRIAL_TEMPLATE") or "sms_account_alerts"
+        ).strip() or "sms_account_alerts"
+        force_trial = trial_flag in {"1", "true", "yes", "on"}
+        never_trial = trial_flag in {"0", "false", "no", "off"}
+
+        create_kwargs: dict[str, Any] = {
+            "from_": creds["from_phone"],
+            "to": e164,
+            "body": trial_template if force_trial else body[:1600],
+        }
+
+        try:
+            msg = client.messages.create(**create_kwargs)
+        except Exception as first_error:
+            err_text = str(first_error).lower()
+            if (
+                not never_trial
+                and "template" in err_text
+                and create_kwargs["body"] != trial_template
+            ):
+                create_kwargs["body"] = trial_template
+                msg = client.messages.create(**create_kwargs)
+                result["trial_template"] = trial_template
+            else:
+                raise
+
+        result["sent"] = True
+        result["sid"] = getattr(msg, "sid", None)
+        result["reason"] = "sent"
+        if create_kwargs.get("body") == trial_template:
+            result["trial_template"] = trial_template
+            result["note"] = (
+                "Twilio trial: özel metin yerine şablon gönderildi "
+                f"({trial_template}). Hesabı upgrade edince özel SMS açılır."
+            )
+        logger.info("SMS gönderildi → %s sid=%s", e164, result["sid"])
+        print(f"[SMS] Gönderildi → {e164} sid={result['sid']}")
+        return _SmsResult(result)
     except Exception as error:
+        result["reason"] = f"twilio_error:{error}"
         logger.error("Twilio SMS hatası: %s", error)
-        return False
+        print(f"[SMS] Twilio hatası: {error}")
+        return _SmsResult(result)
+
+
+class _SmsResult(dict):
+    """dict + truthiness = sent (eski `if send_family_sms(...)` uyumu)."""
+
+    def __bool__(self) -> bool:
+        return bool(self.get("sent"))
 
 
 def _user_id_from_elder_notes(notes: str | None) -> str | None:
@@ -104,7 +280,12 @@ def resolve_family_contact(
     """
     override = (os.getenv("FAMILY_SMS_OVERRIDE_PHONE") or "").strip()
     if override:
-        return {"phone": override, "sms_enabled": True, "source": "env_override"}
+        return {
+            "phone": override,
+            "phone_e164": to_e164(override),
+            "sms_enabled": True,
+            "source": "env_override",
+        }
 
     try:
         from database import supabase
@@ -134,7 +315,6 @@ def resolve_family_contact(
 
     for candidate in candidate_ids:
         try:
-            # family_sms_enabled kolonu olmayabilir — önce geniş select dene
             try:
                 res = (
                     supabase.table("users")
@@ -156,18 +336,38 @@ def resolve_family_contact(
                 continue
             row = res.data[0]
             phone = (row.get("family_phone") or "").strip()
-            if not phone:
+            if not phone or phone.lower().startswith("email:"):
                 continue
             sms_pref = row.get("family_sms_enabled")
             sms_enabled = True if sms_pref is None else bool(sms_pref)
             return {
                 "phone": phone,
+                "phone_e164": to_e164(phone),
                 "sms_enabled": sms_enabled,
                 "family_name": row.get("family_name"),
                 "source": f"users:{candidate}",
             }
         except Exception as error:
             logger.warning("users telefon sorgusu başarısız (%s): %s", candidate, error)
+
+    try:
+        from services import auth_store
+
+        for candidate in candidate_ids:
+            row = auth_store.get_family_phone_for_user(candidate) or {}
+            phone = (row.get("family_phone") or "").strip()
+            if not phone or phone.lower().startswith("email:"):
+                continue
+            sms_pref = row.get("family_sms_enabled")
+            return {
+                "phone": phone,
+                "phone_e164": to_e164(phone),
+                "sms_enabled": True if sms_pref is None else bool(sms_pref),
+                "family_name": row.get("family_name"),
+                "source": f"auth_store:{candidate}",
+            }
+    except Exception as error:
+        logger.warning("auth_store telefon fallback: %s", error)
 
     return {"phone": None, "sms_enabled": False, "source": "not_found"}
 
@@ -211,12 +411,27 @@ def maybe_notify_family_sms(state: dict[str, Any]) -> dict[str, Any]:
         f"Detay: {str(detail)[:160]}\n"
         "Lütfen aile panelini kontrol edin."
     )
-    sent = send_family_sms(phone, body)
+    send_result = send_family_sms(phone, body)
+    if isinstance(send_result, dict):
+        sent_ok = bool(send_result.get("sent"))
+        reason = send_result.get("reason") or ("sent" if sent_ok else "send_failed")
+        mode = send_result.get("mode")
+        sid = send_result.get("sid")
+        to_phone = send_result.get("to") or phone
+    else:
+        sent_ok = bool(send_result)
+        reason = "sent" if sent_ok else "send_failed"
+        mode = None
+        sid = None
+        to_phone = phone
+
     return {
         "attempted": True,
-        "sent": sent,
-        "reason": "sent" if sent else "send_failed",
-        "phone_masked": _mask_phone(phone),
+        "sent": sent_ok,
+        "reason": reason,
+        "mode": mode,
+        "phone_masked": _mask_phone(to_phone),
+        "sid": sid,
     }
 
 

@@ -279,6 +279,12 @@ async function checkAndShowCheckinReminder() {
         if (modal) modal.style.display = 'flex';
 
         localStorage.setItem(countKey, String(shownCount + 1));
+        if (typeof speakTurkish === 'function' && !sessionStorage.getItem('kiosk_checkin_spoken')) {
+            sessionStorage.setItem('kiosk_checkin_spoken', '1');
+            setTimeout(() => {
+                speakTurkish('Günlük sağlık kontrolü zamanı. Bugün nasıl hissediyorsunuz?');
+            }, 400);
+        }
     } catch (error) {
         console.error("Check-in hatırlatma kontrolü başarısız:", error);
     }
@@ -391,8 +397,10 @@ let checkinChartRange = "week";
 
 function moodScore(mood) {
     const value = String(mood || "").toLocaleLowerCase("tr-TR");
-    if (value.includes("harika") || value.includes("çok iyi") || value.includes("iyi")) return 3;
+    if (value.includes("harika") || value.includes("çok iyi") || value.includes("cok iyi")) return 3;
     if (value.includes("halsiz") || value.includes("yorgun") || value.includes("kötü")) return 1;
+    if (value.includes("normal") || value.includes("orta") || value.includes("idare")) return 2;
+    if (value.includes("iyi")) return 3;
     return 2;
 }
 
@@ -693,6 +701,13 @@ function checkinFollowUpMessage(mood) {
             "Not aldık ve ailen bilgilendirildi. Su içmeyi ve hafif bir mola vermeyi unutma.",
             "Anladım, bugün biraz yorgun hissediyorsun. İstersen birlikte konuşarak rahatlarız.",
             "Kaydettim. Ailen de haberiniz olsun diye bilgilendirildi. Kendine nazik davran.",
+        ]);
+    }
+    if (value.includes("normal") || value.includes("orta") || value.includes("idare")) {
+        return pick([
+            "Tamam, durumun normal olarak kaydedildi. Ailen bilgilendirildi.",
+            "Teşekkürler. Orta halli bir gün de olur; yanındayım.",
+            "Kaydettim. İstersen biraz sohbet ederek günü daha iyi hale getirebiliriz.",
         ]);
     }
     if (value.includes("harika") || value === "iyi" || value.includes("cok iyi") || value.includes("çok iyi")) {

@@ -66,6 +66,22 @@ app.include_router(medication_crud_router)
 app.include_router(websocket_router)
 app.include_router(health_router)
 
+
+@app.get("/api/health")
+def api_health():
+    """Liveness — smoke / load balancer."""
+    from services.sms_service import sms_delivery_mode, twilio_ready
+
+    return {
+        "ok": True,
+        "service": "yanimda-al",
+        "orchestrator": os.getenv("ORCHESTRATOR_ENABLED", "true").lower()
+        in {"1", "true", "yes", "on"},
+        "sms_mode": sms_delivery_mode(),
+        "twilio_ready": twilio_ready(),
+    }
+
+
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 SUPABASE_URL  = os.getenv("SUPABASE_URL")
@@ -88,9 +104,6 @@ class CheckinModel(BaseModel):
 
 class MedModel(BaseModel):
     med_id: str
-
-class SummaryRequestModel(BaseModel):
-    conversation_id: str
 
 class FaceAuthRequest(BaseModel):
     image_data: str 
@@ -170,12 +183,14 @@ async def text_chat(data: TextMessageModel):
                 role="user",
                 content=data.message,
                 user_id=data.user_id,
+                elder_id=elder_id,
             )
             save_message(
                 conversation_id=data.conversation_id,
                 role="assistant",
                 content=ai_response,
                 user_id=data.user_id,
+                elder_id=elder_id,
             )
             try:
                 from services import activity_service
@@ -193,6 +208,10 @@ async def text_chat(data: TextMessageModel):
                 "intent": result.get("intent"),
                 "routed_agent": result.get("routed_agent"),
                 "escalation": result.get("escalation", False),
+                "urgency": result.get("urgency"),
+                "escalation_reason": result.get("escalation_reason"),
+                "risk": result.get("risk"),
+                "elder_id": elder_id,
             }
 
         elder_id = data.elder_id or _resolve_elder_id_for_chat(data.user_id, data.user_name)
@@ -221,57 +240,105 @@ async def text_chat(data: TextMessageModel):
 @app.post("/api/voice-chat")
 async def voice_chat(
     file: UploadFile = File(...),
-    conversation_id: str = Form(...),  # Frontend'den form-data içinde geliyor
+    conversation_id: str = Form(...),
     user_id: str = Form(None),
     user_name: str = Form(None),
     elder_id: str = Form(None),
 ):
     display_name = user_name or "canım"
+    user_text = ""
+    ai_response = f"{display_name}, sesini tam alamadım, iyi misin, her şey yolunda mı?"
     try:
         audio_bytes = await file.read()
+        print(
+            f"[VOICE] gelen dosya: name={file.filename!r} "
+            f"ctype={file.content_type!r} bytes={len(audio_bytes) if audio_bytes else 0}"
+        )
         if not audio_bytes or len(audio_bytes) < 100:
             return {
-                "user_transcription": "Ses algılanamadı.",
-                "text": "Ses algılanamadı.",
+                "user_transcription": "",
+                "text": "",
                 "ai_response": f"{display_name}, sesini tam alamadım. Tekrar söyler misin?",
-                "response": f"{display_name}, sesini tam alamadım. Tekrar söyler misin?"
+                "response": f"{display_name}, sesini tam alamadım. Tekrar söyler misin?",
+            }
+        # Çok kısa blob = sessiz tıklama; Whisper'a gönderme
+        if len(audio_bytes) < 1800:
+            return {
+                "user_transcription": "",
+                "text": "",
+                "ai_response": (
+                    f"{display_name}, kayıt çok kısa veya sessiz geldi. "
+                    "Butona basıp en az 1–2 saniye net konuşur musun?"
+                ),
+                "response": (
+                    f"{display_name}, kayıt çok kısa veya sessiz geldi. "
+                    "Butona basıp en az 1–2 saniye net konuşur musun?"
+                ),
             }
 
-        ext = os.path.splitext(file.filename)[1] if file.filename else ".wav"
-        if not ext or ext == ".blob": ext = ".wav" 
-            
-        custom_filename = f"audio{ext}"
-        audio_file_like = io.BytesIO(audio_bytes)
+        filename = (file.filename or "voice.webm").strip() or "voice.webm"
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in {".webm", ".wav", ".mp3", ".mp4", ".m4a", ".ogg", ".mpeg", ".mpga"}:
+            ctype = (file.content_type or "").lower()
+            if "mp4" in ctype or "m4a" in ctype:
+                ext = ".mp4"
+            elif "ogg" in ctype:
+                ext = ".ogg"
+            elif "mpeg" in ctype or "mp3" in ctype:
+                ext = ".mp3"
+            elif "wav" in ctype:
+                ext = ".wav"
+            else:
+                ext = ".webm"
+            filename = f"voice{ext}"
+
+        mime = file.content_type or {
+            ".webm": "audio/webm",
+            ".wav": "audio/wav",
+            ".mp3": "audio/mpeg",
+            ".mpeg": "audio/mpeg",
+            ".mpga": "audio/mpeg",
+            ".mp4": "audio/mp4",
+            ".m4a": "audio/mp4",
+            ".ogg": "audio/ogg",
+        }.get(ext, "application/octet-stream")
 
         transcription = groq_client.audio.transcriptions.create(
-            file=(custom_filename, audio_file_like.read()), 
+            file=(filename, audio_bytes, mime),
             model="whisper-large-v3",
             language="tr",
-            response_format="json"
+            response_format="verbose_json",
+            temperature=0.0,
+            prompt="Merhaba, nasılsın? İlaçlarımı aldım.",
         )
-        
-        user_text = transcription.text
 
-        junk_markers = (
-            "altyazı",
-            "altyazi",
-            "m.k.",
-            "subtitle",
-            "thanks for watching",
-            "thank you for watching",
-        )
-        cleaned = (user_text or "").strip()
-        low = cleaned.lower()
-        if (
-            not cleaned
-            or len(cleaned) < 2
-            or any(marker in low for marker in junk_markers)
-            or low in {"sessizlik", ".", "..."}
-        ):
-            user_text = ""
+        user_text = (getattr(transcription, "text", None) or "").strip()
+        print(f"[VOICE] transcription={user_text!r}")
+
+        # Sessizlik / konuşma yoksa Whisper YouTube cümlesi uydurur
+        try:
+            segments = getattr(transcription, "segments", None) or []
+            if segments:
+                probs = []
+                for seg in segments:
+                    if isinstance(seg, dict):
+                        probs.append(float(seg.get("no_speech_prob") or 0))
+                    else:
+                        probs.append(float(getattr(seg, "no_speech_prob", 0) or 0))
+                avg_ns = sum(probs) / max(len(probs), 1)
+                print(f"[VOICE] avg_no_speech_prob={avg_ns:.3f}")
+                if avg_ns >= 0.55:
+                    user_text = ""
+        except Exception as seg_err:
+            print("[VOICE] segment kontrolü atlandı:", seg_err)
+
+        from services.voice_junk import is_whisper_junk
+
+        if is_whisper_junk(user_text):
+            print(f"[VOICE] junk filtrelendi: {user_text!r}")
             ai_response = (
                 f"{display_name}, sesini net alamadım. "
-                "Butona basıp biraz daha net konuşur musun?"
+                "Butona basıp biraz daha net ve yakından konuşur musun?"
             )
             return {
                 "user_transcription": "",
@@ -281,12 +348,14 @@ async def voice_chat(
                 "message": ai_response,
             }
 
-        if not user_text or user_text.strip() == "":
-            user_text = "Sessizlik"
-            ai_response = f"{display_name}, ne dediğini tam seçemedim. Tekrar söyler misin?"
+        if not user_text:
+            ai_response = (
+                f"{display_name}, sesini net alamadım. "
+                "Butona basıp biraz daha net konuşur musun?"
+            )
             return {
-                "user_transcription": user_text,
-                "text": user_text,
+                "user_transcription": "",
+                "text": "",
                 "ai_response": ai_response,
                 "response": ai_response,
                 "message": ai_response,
@@ -318,6 +387,17 @@ async def voice_chat(
                 user_id=user_id,
                 elder_id=resolved_elder_id,
             )
+            try:
+                from services import activity_service
+
+                activity_service.log_activity_event(
+                    event_type="voice",
+                    user_id=user_id,
+                    elder_id=resolved_elder_id,
+                    meta={"channel": "voice"},
+                )
+            except Exception:
+                pass
             return {
                 "user_transcription": user_text,
                 "text": user_text,
@@ -327,6 +407,10 @@ async def voice_chat(
                 "intent": result.get("intent"),
                 "routed_agent": result.get("routed_agent"),
                 "escalation": result.get("escalation", False),
+                "urgency": result.get("urgency"),
+                "escalation_reason": result.get("escalation_reason"),
+                "risk": result.get("risk"),
+                "elder_id": resolved_elder_id,
             }
 
         ai_response = _legacy_text_reply(user_text, user_name)
@@ -347,15 +431,16 @@ async def voice_chat(
         )
 
     except Exception as e:
-        user_text = "Ses dosyası işlenirken teknik hata oluştu."
+        print("!!! VOICE-CHAT HATASI:", repr(e))
+        user_text = ""
         ai_response = f"{display_name}, sesini tam alamadım, iyi misin, her şey yolunda mı?"
-    
+
     return {
         "user_transcription": user_text,
         "text": user_text,
         "ai_response": ai_response,
         "response": ai_response,
-        "message": ai_response
+        "message": ai_response,
     }
 
 # ==========================================
@@ -488,59 +573,14 @@ async def activity_summary(user_id: str | None = None, elder_id: str | None = No
 
 
 @app.post("/api/medication")
-async def take_medication(data: MedModel):
-    return {"status": "success"}
+async def take_medication_legacy(data: dict | None = None):
+    """Eski stub — gerçek kayıt /api/medication/log üzerinden yapılır."""
+    raise HTTPException(
+        status_code=410,
+        detail="Bu endpoint kaldırıldı. POST /api/medication/log kullanın.",
+    )
 # İlaç tanıma: backend/medication/router.py
-
-@app.post("/api/family/generate-ai-summary")
-async def generate_ai_summary(data: SummaryRequestModel):
-    try:
-        messages_response = (
-            supabase.table("messages")
-            .select("role, content")
-            .eq("conversation_id", data.conversation_id)
-            .order("created_at", desc=True)
-            .limit(15)
-            .execute()
-        )
-
-        if not messages_response.data:
-            return {
-                "success": True,
-                "summary": (
-                    "Bugün henüz dijital refakatçi ile bir sohbet gerçekleşmedi. "
-                    "Yaşlınızın genel durumu stabil görünüyor."
-                ),
-            }
-
-        chat_history = list(reversed(messages_response.data))
-        formatted_history = ""
-        for msg in chat_history:
-            sender = "Yaşlı" if msg["role"] == "user" else "Asistan"
-            formatted_history += f"{sender}: {msg['content']}\n"
-
-        ai_family_prompt = (
-            "Sen 'Yanımda Al' projesinin arka plandaki analiz zekasısın. "
-            "Sana yalnız yaşayan bir birey ile dijital refakatçi asistan arasındaki son sohbet geçmişi verilecek. "
-            "Bu konuşmaları analiz ederek aileye/refakatçiye ulaştırılacak kısa, samimi ama bilgilendirici bir günlük özet çıkar. "
-            "Mod, sağlık veya ilaçlarla ilgili ipuçlarını ve varsa sıkıntıları belirt. "
-            "Tıbbi kararlar verme. Maksimum 3-4 cümle olsun."
-        )
-
-        response = groq_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": ai_family_prompt},
-                {"role": "user", "content": f"Analiz edilecek sohbet geçmişi:\n{formatted_history}"},
-            ],
-            max_tokens=200,
-            temperature=0.5,
-        )
-
-        return {"success": True, "summary": response.choices[0].message.content.strip()}
-    except Exception as error:
-        print(f"[AI ÖZET HATASI]: {error}")
-        raise HTTPException(status_code=500, detail="Yapay zeka özeti şu an üretilemedi.") from error
+# Aile AI özeti + haftalık/ruh hali: routers/health.py (family_insights)
 
 # ==========================================
 # 5. YÜZ TANIMA SİSTEMİ (DEEPFACE ENTEGRELİ)
@@ -733,6 +773,15 @@ class FamilyLoginModel(BaseModel):
     email: str | None = None
     password: str
 
+class DemoFamilyAlertModel(BaseModel):
+    elder_id: str | None = None
+    description: str | None = None
+    alert_type: str = "medication_missed"
+    severity: str = "high"
+    user_id: str | None = None
+    user_name: str | None = None
+    send_sms: bool = True
+
 class ElderlyLoginModel(BaseModel):
     phone: str | None = None
     email: str | None = None
@@ -757,6 +806,56 @@ async def family_login(data: FamilyLoginModel):
         raise HTTPException(status_code=500, detail="Giriş yapılırken veritabanı hatası oluştu.")
 
 
+@app.post("/api/family/demo-alert")
+async def family_demo_alert(data: DemoFamilyAlertModel):
+    """Demo: kritik uyarıyı DB + aile paneli WS + SMS stub ile gönder."""
+    elder_id = (data.elder_id or "").strip() or None
+    if not elder_id and data.user_id:
+        try:
+            elder_id = _resolve_elder_id_for_chat(data.user_id, data.user_name)
+        except Exception:
+            elder_id = None
+    if not elder_id:
+        raise HTTPException(status_code=400, detail="elder_id gerekli (veya geçerli user_id).")
+
+    alert_type = (data.alert_type or "medication_missed").strip() or "medication_missed"
+    severity = (data.severity or "high").strip() or "high"
+    description = (data.description or "").strip() or (
+        "Demo kritik uyarı: yaşlı birey için acil dikkat gerekiyor."
+    )
+
+    try:
+        supabase.table("alerts").insert(
+            {
+                "elder_id": elder_id,
+                "alert_type": alert_type,
+                "severity": severity,
+                "description": description,
+            }
+        ).execute()
+    except Exception as error:
+        print(f"[DEMO-ALERT] DB yazılamadı: {error}")
+
+    from services.family_notify import notify_family
+
+    notify_result = notify_family(
+        elder_id=elder_id,
+        description=description,
+        alert_type=alert_type,
+        severity=severity,
+        user_id=data.user_id,
+        user_name=data.user_name,
+        send_sms=bool(data.send_sms),
+    )
+    return {
+        "ok": True,
+        "elder_id": elder_id,
+        "alert_type": alert_type,
+        "description": description,
+        "notify": notify_result,
+    }
+
+
 @app.post("/api/auth/elderly-login")
 async def elderly_login(data: ElderlyLoginModel):
     try:
@@ -772,118 +871,9 @@ async def elderly_login(data: ElderlyLoginModel):
         raise HTTPException(status_code=500, detail="Giriş yapılırken veritabanı hatası oluştu.")
 
 # ==========================================
-# 6.b AİLE PANELİ - ÖZET VERİLERİ (EKSİK OLAN VE EKLENEN)
+# 6.b AİLE PANELİ — özet / haftalık / ruh hali / AI
+# routers/health.py + services/family_insights.py
 # ==========================================
-class SummaryRequestModel(BaseModel):
-    conversation_id: str
-
-# Özet + sohbet dökümü: routers/health.py
-
-@app.post("/api/family/generate-ai-summary")
-async def generate_ai_summary(data: SummaryRequestModel):
-    """Aile paneli günlük AI özeti — user_id veya elder sohbetleri üzerinden."""
-    try:
-        today_start = datetime.now().strftime("%Y-%m-%dT00:00:00")
-        chat_rows = []
-
-        # 1) messages.user_id = elderly users.id (SQL sonrası yeni mesajlar)
-        try:
-            messages_response = (
-                supabase.table("messages")
-                .select("role, content")
-                .eq("user_id", data.conversation_id)
-                .gte("created_at", today_start)
-                .order("created_at", desc=True)
-                .limit(30)
-                .execute()
-            )
-            chat_rows = messages_response.data or []
-        except Exception as user_id_err:
-            print("[AI-SUMMARY] user_id sorgusu atlandı:", user_id_err)
-
-        # 2) Fallback: elder → conversations → messages (eski kayıtlar)
-        if not chat_rows:
-            try:
-                from medication import service as medication_service
-
-                elder = medication_service.resolve_elder_for_user(data.conversation_id, "Yakınız")
-                elder_id = elder.get("id")
-                if elder_id:
-                    convs = (
-                        supabase.table("conversations")
-                        .select("id")
-                        .eq("elder_id", elder_id)
-                        .order("started_at", desc=True)
-                        .limit(20)
-                        .execute()
-                    )
-                    conv_ids = [c["id"] for c in (convs.data or [])]
-                    for i in range(0, len(conv_ids), 15):
-                        chunk = conv_ids[i : i + 15]
-                        res = (
-                            supabase.table("messages")
-                            .select("role, content, created_at")
-                            .in_("conversation_id", chunk)
-                            .gte("created_at", today_start)
-                            .order("created_at", desc=True)
-                            .limit(30)
-                            .execute()
-                        )
-                        chat_rows.extend(res.data or [])
-                    chat_rows.sort(key=lambda m: str(m.get("created_at") or ""), reverse=True)
-                    chat_rows = chat_rows[:30]
-            except Exception as fallback_err:
-                print("[AI-SUMMARY] elder fallback atlandı:", fallback_err)
-
-        if not chat_rows:
-            return {
-                "success": True,
-                "summary": (
-                    "Bugün henüz dijital refakatçi ile bir sohbet gerçekleşmedi. "
-                    "Yaşlınızın genel durumu stabil görünüyor."
-                ),
-            }
-
-        chat_history = list(reversed(chat_rows))
-
-        elderly_name = "kullanıcı"
-        try:
-            user_resp = supabase.table("users").select("name").eq("id", data.conversation_id).execute()
-            if user_resp.data and user_resp.data[0].get("name"):
-                elderly_name = user_resp.data[0]["name"]
-        except Exception as name_err:
-            print("[İSİM ÇEKME HATASI]:", str(name_err))
-
-        formatted_history = ""
-        for msg in chat_history:
-            sender = elderly_name if msg["role"] == "user" else "Asistan"
-            formatted_history += f"{sender}: {msg['content']}\n"
-
-        ai_family_prompt = (
-            "Sen 'Yanımda Al' projesinin arka plandaki analiz zekasısın. "
-            f"Sana yalnız yaşayan {elderly_name} ile dijital refakatçi asistan arasındaki son sohbet geçmişi verilecek. "
-            f"Bu konuşmaları analiz ederek {elderly_name}'nın ailesine/refakatçisine ulaştırılacak kısa, "
-            f"samimi ama bilgilendirici bir günlük özet çıkar. {elderly_name}'nın modunu, sağlığıyla veya "
-            "ilaçlarıyla ilgili verdiği ipuçlarını, eğer varsa bir sıkıntısını veya talebini mutlaka belirt. "
-            "Tıbbi kararlar verme, doğrudan durumu özetle. Maksimum 3-4 cümle olsun."
-        )
-
-        response = groq_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": ai_family_prompt},
-                {"role": "user", "content": f"Analiz edilecek sohbet geçmişi:\n{formatted_history}"},
-            ],
-            max_tokens=200,
-            temperature=0.5,
-        )
-
-        ai_summary = response.choices[0].message.content.strip()
-        return {"success": True, "summary": ai_summary}
-
-    except Exception as e:
-        print(f"[AI ÖZET HATASI]: {str(e)}")
-        raise HTTPException(status_code=500, detail="Yapay zeka özeti şu an üretilemedi.")
 
 
 @app.post("/api/auth/register")
@@ -1126,20 +1116,20 @@ async def chat_image(
 
         ai_response = None
         try:
+            from ai_models import VISION_MODEL
+
+            vision_system = (
+                "Sen Yanımda Al adlı nazik bir refakatçi asistansın. "
+                "Yaşlı kullanıcıya sade, sıcak ve anlaşılır Türkçe cevap ver. "
+                "Görseli mutlaka incele; ilaç kutusuysa marka/etken madde adını oku "
+                "ve ne için kullanıldığını (tansiyon, şeker vb.) kısaca söyle. "
+                "'Görmedim' deme — bulanıksa bile gördüğünü anlat, emin değilsen söyle. "
+                "Kesin tıbbi teşhis koyma; kuşku varsa aileye veya eczacıya/doktora danışmasını söyle."
+            )
             vision = groq_client.chat.completions.create(
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                model=VISION_MODEL,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Sen Yanımda Al adlı nazik bir refakatçi asistansın. "
-                            "Yaşlı kullanıcıya sade, sıcak ve anlaşılır Türkçe cevap ver. "
-                            "Görseli kullanıcının sorusuna göre yorumla; ilaç, yiyecek, "
-                            "belge veya genel bir fotoğraf olabilir. "
-                            "Kesin tıbbi teşhis koyma; kuşku varsa aileye veya "
-                            "eczacıya/doktora danışmasını söyle."
-                        ),
-                    },
+                    {"role": "system", "content": vision_system},
                     {
                         "role": "user",
                         "content": [
@@ -1151,7 +1141,7 @@ async def chat_image(
                         ],
                     },
                 ],
-                max_completion_tokens=400,
+                max_completion_tokens=500,
             )
             ai_response = vision.choices[0].message.content
         except Exception as vision_err:

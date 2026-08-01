@@ -9,7 +9,7 @@
             var userId = localStorage.getItem("user_id");
             var role = localStorage.getItem("user_role");
             if (!userId) {
-                window.location.replace("onboarding.html");
+                window.location.replace("login.html");
                 return;
             }
             if (role === "family") {
@@ -145,6 +145,7 @@
                     <div id="checkinCard" class="checkin-card">
                         <p id="checkinGreeting" class="checkin-greeting">Bugün kendini nasıl hissediyorsun?</p>
                         <button type="button" class="btn btn-success" onclick="completeCheckin('Harika!')">😊 Çok İyiyim</button>
+                        <button type="button" class="btn btn-neutral" onclick="completeCheckin('Normal')">🙂 Normal</button>
                         <button type="button" class="btn btn-warn" onclick="completeCheckin('Biraz halsizim')">😐 Biraz Halsizim</button>
                     </div>
                     <div class="checkin-dashboard">
@@ -332,10 +333,10 @@
         </div>
     </div>
 
-    <script src="config.js?v=20260728p6"></script>
-    <script src="definitions.js?v=20260728p6"></script>
-    <script src="recognition.js?v=20260728p6"></script>
-    <script src="app.js?v=20260728p6"></script>
-    <script src="app-enhance.js?v=20260729a1"></script>
+    <script src="config.js?v=20260801ux1"></script>
+    <script src="definitions.js?v=20260801ux1"></script>
+    <script src="recognition.js?v=20260801ux1"></script>
+    <script src="app.js?v=20260801ux1"></script>
+    <script src="app-enhance.js?v=20260801ux1"></script>
 </body>
 </html>

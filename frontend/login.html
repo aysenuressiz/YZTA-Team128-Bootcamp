@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="login.css?v=20260721l2">
+    <link rel="stylesheet" href="login.css?v=20260801ux1">
 </head>
 <body class="login-page">
     <div class="ambient" aria-hidden="true">
@@ -17,7 +17,7 @@
 
     <div class="login-shell">
         <header class="login-top">
-            <a class="login-back" href="onboarding.html" aria-label="Geri — Ana sayfa">← Geri</a>
+            <a class="login-back" href="index.html" aria-label="Geri — Ana sayfa">← Geri</a>
             <div class="login-brand-center">
                 <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
                     <circle cx="32" cy="6" r="3" fill="#2563eb"/>
@@ -80,15 +80,14 @@
                         <div class="cam-stage" id="cam-stage">
                             <video id="webcam" autoplay playsinline muted></video>
                             <div id="face-scan-overlay" class="face-scan-overlay" hidden aria-live="polite">
-                                <div class="scan-bucket" aria-hidden="true">
-                                    <div class="bucket-body">
-                                        <div class="bucket-water" id="face-scan-water">
-                                            <span class="water-wave"></span>
-                                            <span class="water-wave w2"></span>
+                                <div class="scan-hourglass" aria-hidden="true">
+                                    <div class="hg-frame">
+                                        <div class="hg-sand-top" id="face-scan-sand-top"></div>
+                                        <div class="hg-neck"></div>
+                                        <div class="hg-sand-bottom" id="face-scan-water">
+                                            <span class="hg-grain"></span>
                                         </div>
                                     </div>
-                                    <div class="bucket-rim"></div>
-                                    <div class="bucket-handle"></div>
                                 </div>
                                 <div class="scan-pct" id="face-scan-pct">0%</div>
                                 <p class="scan-label" id="face-scan-label">Tarama başlıyor…</p>
@@ -138,8 +137,8 @@
         </div>
     </div>
 
-    <script src="config.js"></script>
-    <script src="authorization.js?v=20260721l2"></script>
-    <script src="login.js?v=20260721l2"></script>
+    <script src="config.js?v=20260801ux1"></script>
+    <script src="authorization.js?v=20260801ux1"></script>
+    <script src="login.js?v=20260801ux1"></script>
 </body>
 </html>
