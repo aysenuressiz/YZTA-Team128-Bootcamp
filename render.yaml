@@ -39,12 +39,12 @@ services:
       - key: TWILIO_PHONE_NUMBER
         sync: false
 
+  # Static site: plan alanı yok (Render free plan static için geçersiz → Blueprint hata verir)
   - type: web
     name: yanimda-al-frontend
     runtime: static
-    plan: free
     rootDir: frontend
-    buildCommand: echo "static frontend — no build"
+    buildCommand: echo "static frontend - no build"
     staticPublishPath: .
     headers:
       - path: /*
