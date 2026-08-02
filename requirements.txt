@@ -5,8 +5,9 @@ groq==0.31.0
 python-dotenv==1.1.1
 pydantic
 supabase
+# Yerel yüz tanıma (Render prod: backend/requirements.txt — daha hafif)
 deepface
-opencv-python
+opencv-python-headless
 numpy
 tf-keras==2.18.0
 apscheduler
@@ -15,5 +16,4 @@ langgraph
 langchain-core
 chromadb
 twilio
-# onnxruntime opsiyonel; Windows Anaconda'da DLL sorunu olabilir.
-# Chroma varsayılan embedding yerine hash embedding kullanılıyor.
+# Canlı deploy: backend/requirements.txt + render.yaml kullanır.

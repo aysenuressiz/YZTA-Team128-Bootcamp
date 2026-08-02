@@ -8,7 +8,16 @@ load_dotenv()
 import io
 from datetime import datetime
 import numpy as np
-import cv2
+
+def _get_cv2():
+    try:
+        import cv2
+        return cv2
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Görüntü işleme modülü hazır değil (opencv).",
+        ) from error
 
 def _get_deepface():
     try:
@@ -17,7 +26,7 @@ def _get_deepface():
     except Exception as error:
         raise HTTPException(
             status_code=503,
-            detail="Yüz tanıma modülü hazır değil. 'pip install deepface tf-keras==2.18.0' komutunu çalıştırın.",
+            detail="Yüz tanıma modülü hazır değil. Sunucuda deepface/tf-keras kurulu olmalı.",
         ) from error
 
 import json
@@ -111,6 +120,7 @@ class FaceAuthRequest(BaseModel):
 # Yardımcı Fonksiyon: Base64'ü görüntüye çevirir
 def base64_to_image(base64_string):
     try:
+        cv2 = _get_cv2()
         if "," in base64_string:
             base64_string = base64_string.split(",")[1]
         img_bytes = base64.b64decode(base64_string)
@@ -118,6 +128,8 @@ def base64_to_image(base64_string):
         img = cv2.imdecode(img_np, cv2.IMREAD_COLOR)
         rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         return rgb_img
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail="Fotoğraf verisi işlenemedi.")
 
