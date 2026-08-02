@@ -1,0 +1,24 @@
+# Render / production — backend (rootDir: backend)
+# Ağır ML paketleri opsiyonel; free instance OOM/build fail riski yüksek.
+
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+python-multipart==0.0.20
+groq==0.31.0
+python-dotenv==1.1.1
+pydantic>=2,<3
+supabase
+numpy
+opencv-python-headless==4.10.0.84
+apscheduler
+websockets
+langgraph
+langchain-core
+twilio
+
+# Yüz tanıma (büyük: TensorFlow). İstersen aç:
+# deepface
+# tf-keras==2.18.0
+
+# Chroma kapalı (MEMORY_USE_CHROMA=false); yerelde lazımsa:
+# chromadb
